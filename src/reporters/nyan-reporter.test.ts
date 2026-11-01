@@ -401,6 +401,85 @@ test(
 )
 
 test(
+  [
+    'given a coverage passthrough event',
+    'when reported',
+    'it should buffer the lines rather than printing them immediately',
+  ].join(', '),
+  () => {
+    // given
+    const reporter = nyanReporter(deps)
+    const event: TRunEvent = {
+      type: 'passthrough',
+      kind: 'coverage',
+      lines: ['File | % Funcs | % Lines', 'src/add.ts | 25.00 | 100.00'],
+    }
+
+    // when
+    const { state, output } = reporter.next(reporter.initial, event)
+
+    // then
+    expect(output).toBe('')
+    expect(state.coverageLines).toEqual([
+      'File | % Funcs | % Lines',
+      'src/add.ts | 25.00 | 100.00',
+    ])
+  },
+)
+
+test(
+  [
+    'given buffered coverage lines and a gate-failed event',
+    'when the run ends',
+    'it should emit the table after the summary, then the failure signal immediately after',
+  ].join(', '),
+  () => {
+    // given
+    const reporter = nyanReporter(deps)
+    const coverageEvent: TRunEvent = {
+      type: 'passthrough',
+      kind: 'coverage',
+      lines: ['File | % Funcs | % Lines', 'src/add.ts | 25.00 | 100.00'],
+    }
+    const gateEvent: TRunEvent = {
+      type: 'coverage-gate-failed',
+      thresholdPct: { functionsPct: 95, linesPct: 95 },
+      failing: [{ file: 'src/add.ts', functionsPct: 25, linesPct: 100 }],
+    }
+    const afterCoverage = reporter.next(reporter.initial, coverageEvent)
+    const afterGate = reporter.next(afterCoverage.state, gateEvent)
+    const endEvent: TRunEvent = {
+      type: 'run-end',
+      summarySeen: true,
+      totals: {
+        pass: 1,
+        fail: 0,
+        skip: 0,
+        todo: 0,
+        errors: 0,
+        expectCalls: 1,
+        tests: 1,
+        files: 1,
+        durationMs: 1,
+      },
+    }
+
+    // when
+    const { output } = reporter.next(afterGate.state, endEvent)
+
+    // then
+    expect(afterCoverage.output).toBe('')
+    expect(afterGate.output).toBe('')
+    const summaryIndex = output.indexOf('1 tests, 1 passed')
+    const coverageIndex = output.indexOf('File | % Funcs | % Lines')
+    const gateIndex = output.indexOf('COVERAGE FAIL')
+    expect(summaryIndex).toBeGreaterThan(-1)
+    expect(coverageIndex).toBeGreaterThan(summaryIndex)
+    expect(gateIndex).toBeGreaterThan(coverageIndex)
+  },
+)
+
+test(
   ['given the reporter end', 'it should produce no trailing output'].join(', '),
   () => {
     // given

@@ -11,6 +11,8 @@ export type TMarkdownState = Readonly<{
   paths: readonly (readonly string[])[]
   failures: readonly TMarkdownFailure[]
   totals: TTotals | undefined
+  coverageLines: readonly string[]
+  gateFailureLines: readonly string[]
 }>
 
 const zeroTotals: TTotals = {
@@ -68,6 +70,17 @@ const renderErrors = (failures: readonly TMarkdownFailure[]): string => {
   return `\n\n## Errors\n\n${sections}`
 }
 
+const renderCoverage = (
+  coverageLines: readonly string[],
+  gateFailureLines: readonly string[],
+): string => {
+  if (coverageLines.length === 0) return ''
+  const table = `\`\`\`text\n${coverageLines.join('\n')}\n\`\`\``
+  const gateSection =
+    gateFailureLines.length === 0 ? '' : `\n\n${gateFailureLines.join('\n')}`
+  return `\n\n## Coverage\n\n${table}${gateSection}`
+}
+
 const renderTotals = (totals: TTotals): string =>
   [
     '## Totals',
@@ -87,6 +100,8 @@ export const markdownReporter = (
     paths: [],
     failures: [] as readonly TMarkdownFailure[],
     totals: undefined,
+    coverageLines: [],
+    gateFailureLines: [],
   },
 
   next: (state, event) => {
@@ -122,6 +137,32 @@ export const markdownReporter = (
         output: '',
       }
     }
+    if (event.type === 'passthrough' && event.kind === 'coverage') {
+      return {
+        state: {
+          ...state,
+          coverageLines: [...state.coverageLines, ...event.lines],
+        },
+        output: '',
+      }
+    }
+    if (event.type === 'coverage-gate-failed') {
+      const markdownLines = [
+        `**COVERAGE FAIL** ${event.failing.length} ${event.failing.length === 1 ? 'file' : 'files'} below the minimum (functions ${event.thresholdPct.functionsPct.toFixed(2)}%, lines ${event.thresholdPct.linesPct.toFixed(2)}%)`,
+        '',
+        ...event.failing.map(
+          (row) =>
+            `- \`${row.file}\` functions ${row.functionsPct.toFixed(2)}%, lines ${row.linesPct.toFixed(2)}%`,
+        ),
+      ]
+      return {
+        state: {
+          ...state,
+          gateFailureLines: [...state.gateFailureLines, ...markdownLines],
+        },
+        output: '',
+      }
+    }
     if (event.type === 'run-end') {
       return { state: { ...state, totals: event.totals }, output: '' }
     }
@@ -133,7 +174,8 @@ export const markdownReporter = (
     const bullets = renderBullets(state.paths, 0)
     const body = bullets.length > 0 ? `${title}\n\n${bullets}` : title
     const errors = renderErrors(state.failures)
+    const coverage = renderCoverage(state.coverageLines, state.gateFailureLines)
     const totals = renderTotals(state.totals ?? zeroTotals)
-    return `${body}${errors}\n\n${totals}\n`
+    return `${body}${errors}${coverage}\n\n${totals}\n`
   },
 })

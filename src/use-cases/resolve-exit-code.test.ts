@@ -204,3 +204,114 @@ test(
     expect(actual).toBe(initialExitState)
   },
 )
+
+test(
+  [
+    'given every test passed but the coverage gate failed',
+    'when resolved',
+    'it should exit 3',
+  ].join(', '),
+  () => {
+    // given
+    const gateEvent: TRunEvent = {
+      type: 'coverage-gate-failed',
+      thresholdPct: { functionsPct: 95, linesPct: 95 },
+      failing: [{ file: 'src/add.ts', functionsPct: 25, linesPct: 100 }],
+    }
+    const endEvent: TRunEvent = {
+      type: 'run-end',
+      summarySeen: true,
+      totals: {
+        pass: 1,
+        fail: 0,
+        skip: 0,
+        todo: 0,
+        errors: 0,
+        expectCalls: 1,
+        tests: 1,
+        files: 1,
+        durationMs: 1,
+      },
+    }
+
+    // when
+    const afterGate = nextExitState(initialExitState, gateEvent)
+    const final = nextExitState(afterGate, endEvent)
+    const actual = resolveExitCode(final)
+
+    // then
+    expect(actual).toBe(3)
+  },
+)
+
+test(
+  [
+    'given a test failed and the coverage gate also failed',
+    'when resolved',
+    'it should exit 1 because a failed test wins over a coverage gate failure',
+  ].join(', '),
+  () => {
+    // given
+    const failEvent: TRunEvent = {
+      type: 'test',
+      status: 'fail',
+      file: 'a.test.ts',
+      name: 'x',
+      path: ['x'],
+      durationMs: 1,
+      diagnostics: [],
+    }
+    const gateEvent: TRunEvent = {
+      type: 'coverage-gate-failed',
+      thresholdPct: { functionsPct: 95, linesPct: 95 },
+      failing: [{ file: 'src/add.ts', functionsPct: 25, linesPct: 100 }],
+    }
+    const endEvent: TRunEvent = {
+      type: 'run-end',
+      summarySeen: true,
+      totals: {
+        pass: 0,
+        fail: 1,
+        skip: 0,
+        todo: 0,
+        errors: 0,
+        expectCalls: 0,
+        tests: 1,
+        files: 1,
+        durationMs: 1,
+      },
+    }
+
+    // when
+    const afterFail = nextExitState(initialExitState, failEvent)
+    const afterGate = nextExitState(afterFail, gateEvent)
+    const final = nextExitState(afterGate, endEvent)
+    const actual = resolveExitCode(final)
+
+    // then
+    expect(actual).toBe(1)
+  },
+)
+
+test(
+  [
+    'given the coverage gate failed but no summary was seen',
+    'when resolved',
+    'it should still exit 2',
+  ].join(', '),
+  () => {
+    // given
+    const gateEvent: TRunEvent = {
+      type: 'coverage-gate-failed',
+      thresholdPct: { functionsPct: 95, linesPct: 95 },
+      failing: [{ file: 'src/add.ts', functionsPct: 25, linesPct: 100 }],
+    }
+
+    // when
+    const state = nextExitState(initialExitState, gateEvent)
+    const actual = resolveExitCode(state)
+
+    // then
+    expect(actual).toBe(2)
+  },
+)

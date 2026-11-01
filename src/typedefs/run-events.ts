@@ -1,3 +1,5 @@
+import type { TCoverageRow, TCoverageThresholdPct } from './coverage.js'
+
 export type TTestStatus = 'pass' | 'fail' | 'skip' | 'todo'
 
 export type TTotals = Readonly<{
@@ -40,3 +42,14 @@ export type TRunEvent =
       lines: readonly string[]
     }>
   | Readonly<{ type: 'run-end'; totals: TTotals; summarySeen: boolean }>
+  | TCoverageGateFailedEvent
+
+// A named alias rather than inlined into the union: `Extract<TRunEvent, {
+// type: 'coverage-gate-failed' }>` cannot be proven readonly by annotation
+// alone (it resolves through a conditional type), so an exported function
+// narrowed to just this event needs a type it can point at directly.
+export type TCoverageGateFailedEvent = Readonly<{
+  type: 'coverage-gate-failed'
+  thresholdPct: TCoverageThresholdPct
+  failing: readonly TCoverageRow[]
+}>

@@ -1,6 +1,10 @@
 import { expect, test } from 'bun:test'
 import { main } from './cli.js'
-import { mixedResultsFixture } from './parse/bun-output.fixture.js'
+import {
+  coverageFixture,
+  lowCoverageFixture,
+  mixedResultsFixture,
+} from './parse/bun-output.fixture.js'
 
 // A plain object, not an async generator: there is no await in the body, and
 // wrapping each value of a synchronous iterator in Promise.resolve satisfies
@@ -13,7 +17,12 @@ const linesOf = (text: string): AsyncIterable<string> => ({
   },
 })
 
-const makeDeps = (input: string) => {
+const makeDeps = (
+  input: string,
+  overrides: Readonly<{
+    readTextFile?: (path: string) => string | undefined
+  }> = {},
+) => {
   // The two accumulators in this test double: `main` calls `write` and
   // `writeError` as a side-effecting callback over time, so collecting their
   // output cannot be expressed as a reduce.
@@ -31,6 +40,8 @@ const makeDeps = (input: string) => {
       columns: 80,
       isTty: false,
       env: {},
+      cwd: '/fake',
+      readTextFile: overrides.readTextFile ?? (() => undefined),
     },
     stdout: () => stdout.join(''),
     stderr: () => stderr.join(''),
@@ -253,5 +264,94 @@ test(
 
     // then
     expect(stdout()).not.toContain('\u001b[')
+  },
+)
+
+const reporterModeFlags = [
+  { label: 'default TAP', flags: [] as readonly string[] },
+  { label: '--nyan', flags: ['--nyan'] },
+  { label: '--markdown', flags: ['--markdown'] },
+  { label: '--block', flags: ['--block'] },
+  { label: '--agent', flags: ['--agent'] },
+]
+
+for (const { label, flags } of reporterModeFlags) {
+  test(
+    [
+      `given the low-coverage fixture with ${label}`,
+      'when run with --coverage-threshold=0.95',
+      'it should print the coverage data and the failure signal, and exit 3',
+    ].join(', '),
+    async () => {
+      // given
+      const { deps, stdout } = makeDeps(lowCoverageFixture)
+
+      // when
+      const code = await main(deps)([...flags, '--coverage-threshold=0.95'])
+
+      // then
+      expect(stdout()).toContain('src/add.ts')
+      expect(stdout()).toContain('COVERAGE FAIL')
+      expect(code).toBe(3)
+    },
+  )
+}
+
+test(
+  [
+    'given the low-coverage fixture',
+    'when run with a threshold taken from a fake bunfig.toml',
+    'it should resolve the gate from the file and exit 3',
+  ].join(', '),
+  async () => {
+    // given
+    const { deps, stdout } = makeDeps(lowCoverageFixture, {
+      readTextFile: () => '[test]\ncoverageThreshold = 0.95\n',
+    })
+
+    // when
+    const code = await main(deps)([])
+
+    // then
+    expect(stdout()).toContain('COVERAGE FAIL')
+    expect(code).toBe(3)
+  },
+)
+
+test(
+  [
+    'given the low-coverage fixture',
+    'when run with no threshold configured anywhere',
+    'it should still print the table but exit 0',
+  ].join(', '),
+  async () => {
+    // given
+    const { deps, stdout } = makeDeps(lowCoverageFixture)
+
+    // when
+    const code = await main(deps)([])
+
+    // then
+    expect(stdout()).toContain('src/add.ts')
+    expect(stdout()).not.toContain('COVERAGE FAIL')
+    expect(code).toBe(0)
+  },
+)
+
+test(
+  [
+    'given the fully-covered fixture',
+    'when run with --coverage-threshold=0.95',
+    'it should exit 0',
+  ].join(', '),
+  async () => {
+    // given
+    const { deps } = makeDeps(coverageFixture)
+
+    // when
+    const code = await main(deps)(['--coverage-threshold=0.95'])
+
+    // then
+    expect(code).toBe(0)
   },
 )

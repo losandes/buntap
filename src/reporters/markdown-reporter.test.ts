@@ -215,6 +215,78 @@ test(
 
 test(
   [
+    'given a coverage passthrough event',
+    'when the reporter ends',
+    'it should print a Coverage section between Errors and Totals',
+  ].join(', '),
+  () => {
+    // given
+    const coverageEvent: TRunEvent = {
+      type: 'passthrough',
+      kind: 'coverage',
+      lines: [
+        'File | % Funcs | % Lines',
+        'All files | 62.50 | 100.00',
+        ' src/add.ts | 25.00 | 100.00',
+      ],
+    }
+
+    // when
+    const output = fold([...mixedEvents, coverageEvent])
+
+    // then
+    const errorsIndex = output.indexOf('## Errors')
+    const coverageIndex = output.indexOf('## Coverage')
+    const totalsIndex = output.indexOf('## Totals')
+    expect(errorsIndex).toBeGreaterThan(-1)
+    expect(coverageIndex).toBeGreaterThan(errorsIndex)
+    expect(totalsIndex).toBeGreaterThan(coverageIndex)
+    expect(output).toContain(
+      '```text\nFile | % Funcs | % Lines\nAll files | 62.50 | 100.00\n src/add.ts | 25.00 | 100.00\n```',
+    )
+  },
+)
+
+test(
+  [
+    'given a coverage event and a gate-failed event',
+    'when the reporter ends',
+    'it should not be printed until end(), and should print the failure signal below the fence',
+  ].join(', '),
+  () => {
+    // given
+    const reporter = markdownReporter(deps)
+    const coverageEvent: TRunEvent = {
+      type: 'passthrough',
+      kind: 'coverage',
+      lines: ['File | % Funcs | % Lines', ' src/add.ts | 25.00 | 100.00'],
+    }
+    const gateEvent: TRunEvent = {
+      type: 'coverage-gate-failed',
+      thresholdPct: { functionsPct: 95, linesPct: 95 },
+      failing: [{ file: 'src/add.ts', functionsPct: 25, linesPct: 100 }],
+    }
+
+    // when
+    const afterCoverage = reporter.next(reporter.initial, coverageEvent)
+    const afterGate = reporter.next(afterCoverage.state, gateEvent)
+    const output = reporter.end(afterGate.state)
+
+    // then
+    expect(afterCoverage.output).toBe('')
+    expect(afterGate.output).toBe('')
+    expect(output).toContain(
+      '**COVERAGE FAIL** 1 file below the minimum (functions 95.00%, lines 95.00%)',
+    )
+    expect(output).toContain('- `src/add.ts` functions 25.00%, lines 100.00%')
+    const fenceEnd = output.indexOf('```\n', output.indexOf('```text'))
+    const gateIndex = output.indexOf('**COVERAGE FAIL**')
+    expect(gateIndex).toBeGreaterThan(fenceEnd)
+  },
+)
+
+test(
+  [
     'given the generated document',
     'when inspected',
     'it should follow the house markdown rules it claims to',

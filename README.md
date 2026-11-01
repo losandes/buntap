@@ -32,7 +32,9 @@ bun test 2>&1 | buntap --block     # inverse-video block report
 bun test 2>&1 | buntap --agent     # minimal output, verbose only on failure
 ```
 
-`--coverage` and bun's other flags are not a problem: the coverage table passes through intact rather than being misread as test output.
+## Coverage
+
+`bun test --coverage`'s per-file coverage table is reproduced in every reporter, not just TAP. When a file falls below the configured minimum, buntap prints a `COVERAGE FAIL` block and exits `3`. The threshold comes from `--coverage-threshold=<n>` or from `[test].coverageThreshold` in `./bunfig.toml`; only the `lines` and `functions` keys of the inline-table form are evaluated (bun's text table has no statements column). A run with no threshold configured prints the table unchanged and exits `0`.
 
 ### TAP (default)
 
@@ -98,16 +100,17 @@ Nothing for a passing test. For a failure: the file, the full test name, and the
 
 ## Flags
 
-| Flag         | Effect                                  |
-| ------------ | --------------------------------------- |
-| `--nyan`     | nyan cat reporter                       |
-| `--markdown` | markdown reporter                       |
-| `--block`    | inverse-video block reporter            |
-| `--agent`    | minimal output, verbose only on failure |
-| `--color`    | force colour on                         |
-| `--no-color` | force colour off                        |
-| `--help`     | print usage and exit `0`                |
-| `--version`  | print the version and exit `0`          |
+| Flag                       | Effect                                                                                                                          |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `--nyan`                   | nyan cat reporter                                                                                                               |
+| `--markdown`               | markdown reporter                                                                                                               |
+| `--block`                  | inverse-video block reporter                                                                                                    |
+| `--agent`                  | minimal output, verbose only on failure                                                                                         |
+| `--coverage-threshold=<n>` | fail with exit `3` when a file is below `<n>` (`0`-`1` or `0`-`100`); defaults to `[test].coverageThreshold` in `./bunfig.toml` |
+| `--color`                  | force colour on                                                                                                                 |
+| `--no-color`               | force colour off                                                                                                                |
+| `--help`                   | print usage and exit `0`                                                                                                        |
+| `--version`                | print the version and exit `0`                                                                                                  |
 
 Giving two reporter flags together, or any flag not listed above, is an error: `buntap` prints usage to stderr and exits `2` rather than silently ignoring it. Colour is otherwise on only when stdout is a TTY and `NO_COLOR` is unset.
 
@@ -115,9 +118,10 @@ Giving two reporter flags together, or any flag not listed above, is an error: `
 
 | Code | Meaning                                                               |
 | ---- | --------------------------------------------------------------------- |
-| `0`  | the run reported no failures and no errors                            |
-| `1`  | bun reported a failure, an error, or an unhandled error between tests |
+| `0`  | no failures, no errors, and coverage at or above the threshold        |
+| `1`  | bun reported a test failure, an error, or an unhandled error          |
 | `2`  | a usage error, or no bun test summary was found on stdin              |
+| `3`  | every test passed but at least one file is below the coverage minimum |
 
 bun's own exit code never reaches `buntap` — it is the last command in the pipe, so the shell only sees its status. `buntap` reconstructs pass/fail from the parsed summary instead.
 

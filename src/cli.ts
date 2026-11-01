@@ -1,4 +1,7 @@
+import { parseBunfigThreshold } from './parse/parse-bunfig-threshold.js'
 import { parseRun } from './parse/parse-run.js'
+import type { TCoverageThresholdPct } from './typedefs/coverage.js'
+import { evaluateCoverageGate } from './use-cases/evaluate-coverage-gate.js'
 import { parseCliOptions } from './use-cases/parse-cli-options.js'
 import {
   initialExitState,
@@ -14,6 +17,8 @@ export type TCliDeps = Readonly<{
   columns: number
   isTty: boolean
   env: Readonly<Record<string, string | undefined>>
+  cwd: string
+  readTextFile: (path: string) => string | undefined
 }>
 
 // Hardcoded rather than read from package.json at runtime: bin.ts stays the
@@ -31,6 +36,8 @@ Options:
   --markdown    markdown reporter
   --block       inverse-video block reporter
   --agent       minimal output, verbose only on failure
+  --coverage-threshold=<n>  fail with exit 3 when a file is below <n> (0-1 or 0-100);
+                            defaults to [test].coverageThreshold in ./bunfig.toml
   --color       force colour on
   --no-color    force colour off
   --help        print this help and exit
@@ -48,6 +55,29 @@ const resolveColor = (
   if (colorMode === 'on') return true
   if (colorMode === 'off') return false
   return deps.isTty && deps.env.NO_COLOR === undefined
+}
+
+type TResolvedThreshold = Readonly<{
+  thresholdPct: TCoverageThresholdPct | undefined
+  warning: string | undefined
+}>
+
+/** \u00a71.2.1: the flag wins; otherwise `[test].coverageThreshold` in `<cwd>/bunfig.toml` is read, never the filesystem when the flag already answered it. */
+const resolveThreshold = (
+  deps: Pick<TCliDeps, 'cwd' | 'readTextFile'>,
+  flagThresholdPct: TCoverageThresholdPct | undefined,
+): TResolvedThreshold => {
+  if (flagThresholdPct !== undefined) {
+    return { thresholdPct: flagThresholdPct, warning: undefined }
+  }
+
+  const toml = deps.readTextFile(`${deps.cwd}/bunfig.toml`)
+  if (toml === undefined) return { thresholdPct: undefined, warning: undefined }
+
+  const parsed = parseBunfigThreshold(toml)
+  return parsed.status === 'error'
+    ? { thresholdPct: undefined, warning: `buntap: ${parsed.error}\n` }
+    : { thresholdPct: parsed.data, warning: undefined }
 }
 
 export const main =
@@ -76,12 +106,18 @@ export const main =
       color: resolveColor(options.data.colorMode, deps),
     })(options.data)
 
+    const threshold = resolveThreshold(deps, options.data.coverageThresholdPct)
+    if (threshold.warning !== undefined) deps.writeError(threshold.warning)
+    const gate = evaluateCoverageGate(threshold.thresholdPct)
+
     // The one permitted accumulator in this module: a stream fold cannot be
     // expressed as a reduce because events arrive over time.
     let exitState = initialExitState
     for await (const event of parseRun(deps.input)) {
-      deps.write(reporter.next(event))
-      exitState = nextExitState(exitState, event)
+      for (const gated of gate(event)) {
+        deps.write(reporter.next(gated))
+        exitState = nextExitState(exitState, gated)
+      }
     }
     deps.write(reporter.end())
 

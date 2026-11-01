@@ -1,3 +1,4 @@
+import { formatCoverageGateFailure } from '../lib/format-coverage-gate.js'
 import type { TReporter } from '../typedefs/reporter.js'
 import type { TRunEvent } from '../typedefs/run-events.js'
 
@@ -122,6 +123,12 @@ export const tapReporter: TReporter<TTapState> = {
       return event.lines.length > 0
         ? { state, output: `${commentLines(event.lines)}\n` }
         : { state, output: '' }
+    }
+    if (event.type === 'coverage-gate-failed') {
+      return {
+        state,
+        output: `${commentLines(formatCoverageGateFailure(event))}\n`,
+      }
     }
     // run-end
     const output = event.summarySeen

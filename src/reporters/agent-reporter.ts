@@ -1,3 +1,4 @@
+import { formatCoverageGateFailure } from '../lib/format-coverage-gate.js'
 import { formatDuration } from '../lib/format-duration.js'
 import type { TReporter, TReporterDeps } from '../typedefs/reporter.js'
 import type { TTotals } from '../typedefs/run-events.js'
@@ -45,6 +46,17 @@ export const agentReporter = (
       return {
         state,
         output: `${renderFailure(event.file, event.message, event.diagnostics)}\n`,
+      }
+    }
+    if (event.type === 'passthrough' && event.kind === 'coverage') {
+      return event.lines.length > 0
+        ? { state, output: `\n${event.lines.join('\n')}\n` }
+        : { state, output: '' }
+    }
+    if (event.type === 'coverage-gate-failed') {
+      return {
+        state,
+        output: `${formatCoverageGateFailure(event).join('\n')}\n`,
       }
     }
     if (event.type === 'run-end') {

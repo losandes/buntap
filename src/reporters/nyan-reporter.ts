@@ -4,6 +4,7 @@ import {
   hideCursor,
   showCursor,
 } from '../lib/console-styles.js'
+import { formatCoverageGateFailure } from '../lib/format-coverage-gate.js'
 import { formatDuration } from '../lib/format-duration.js'
 import { foldTally, initialTally, type TTally } from '../lib/tally.js'
 import type { TReporter, TReporterDeps } from '../typedefs/reporter.js'
@@ -37,6 +38,8 @@ export type TNyanState = Readonly<{
   tally: TTally
   failures: readonly string[]
   totals: TTotals | undefined
+  coverageLines: readonly string[]
+  gateFailureLines: readonly string[]
 }>
 
 const faceFor = (tally: TTally): string => {
@@ -153,6 +156,8 @@ export const nyanReporter = (deps: TReporterDeps): TReporter<TNyanState> => {
       tally: initialTally,
       failures: [],
       totals: undefined,
+      coverageLines: [],
+      gateFailureLines: [],
     },
 
     next: (state, event) => {
@@ -177,12 +182,43 @@ export const nyanReporter = (deps: TReporterDeps): TReporter<TNyanState> => {
         return { state: drawn.state, output: begun.output + drawn.output }
       }
 
+      if (event.type === 'passthrough' && event.kind === 'coverage') {
+        return {
+          state: {
+            ...state,
+            coverageLines: [...state.coverageLines, ...event.lines],
+          },
+          output: '',
+        }
+      }
+
+      if (event.type === 'coverage-gate-failed') {
+        return {
+          state: {
+            ...state,
+            gateFailureLines: [
+              ...state.gateFailureLines,
+              ...formatCoverageGateFailure(event),
+            ],
+          },
+          output: '',
+        }
+      }
+
       if (event.type === 'run-end') {
         const failureDump =
           state.failures.length > 0 ? `\n${state.failures.join('\n')}\n` : ''
+        const coverageDump =
+          state.coverageLines.length > 0
+            ? `\n${state.coverageLines.join('\n')}\n`
+            : ''
+        const gateFailureDump =
+          state.gateFailureLines.length > 0
+            ? `${state.gateFailureLines.join('\n')}\n`
+            : ''
         return {
           state: { ...state, totals: event.totals },
-          output: `${showCursor()}${failureDump}\n${summaryLine(event.totals)}`,
+          output: `${showCursor()}${failureDump}\n${summaryLine(event.totals)}${coverageDump}${gateFailureDump}`,
         }
       }
 

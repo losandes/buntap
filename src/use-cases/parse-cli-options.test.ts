@@ -17,7 +17,12 @@ test(
     // then
     expect(actual).toEqual({
       status: 'ok',
-      data: { mode: 'run', reporter: 'tap', colorMode: 'auto' },
+      data: {
+        mode: 'run',
+        reporter: 'tap',
+        colorMode: 'auto',
+        coverageThresholdPct: undefined,
+      },
     })
   },
 )
@@ -44,7 +49,12 @@ for (const { flag, reporter } of reporterFlagCases) {
       // then
       expect(actual).toEqual({
         status: 'ok',
-        data: { mode: 'run', reporter, colorMode: 'auto' },
+        data: {
+          mode: 'run',
+          reporter,
+          colorMode: 'auto',
+          coverageThresholdPct: undefined,
+        },
       })
     },
   )
@@ -60,7 +70,12 @@ test(
     // then
     expect(actual).toEqual({
       status: 'ok',
-      data: { mode: 'run', reporter: 'tap', colorMode: 'on' },
+      data: {
+        mode: 'run',
+        reporter: 'tap',
+        colorMode: 'on',
+        coverageThresholdPct: undefined,
+      },
     })
   },
 )
@@ -75,7 +90,12 @@ test(
     // then
     expect(actual).toEqual({
       status: 'ok',
-      data: { mode: 'run', reporter: 'tap', colorMode: 'off' },
+      data: {
+        mode: 'run',
+        reporter: 'tap',
+        colorMode: 'off',
+        coverageThresholdPct: undefined,
+      },
     })
   },
 )
@@ -139,7 +159,12 @@ test(
     // then
     expect(actual).toEqual({
       status: 'ok',
-      data: { mode: 'run', reporter: 'nyan', colorMode: 'auto' },
+      data: {
+        mode: 'run',
+        reporter: 'nyan',
+        colorMode: 'auto',
+        coverageThresholdPct: undefined,
+      },
     })
   },
 )
@@ -157,5 +182,116 @@ test(
 
     // then
     expect(actual).toEqual({ status: 'error', error: "unknown flag '--wat'" })
+  },
+)
+
+test(
+  [
+    'given --coverage-threshold=95',
+    'when parsed',
+    'it should resolve to 95/95',
+  ].join(', '),
+  () => {
+    // given
+    // when
+    const actual = parseCliOptions(['--coverage-threshold=95'])
+
+    // then
+    expect(actual).toEqual({
+      status: 'ok',
+      data: {
+        mode: 'run',
+        reporter: 'tap',
+        colorMode: 'auto',
+        coverageThresholdPct: { functionsPct: 95, linesPct: 95 },
+      },
+    })
+  },
+)
+
+test(
+  [
+    'given --coverage-threshold=0.95',
+    'when parsed',
+    'it should resolve to the same 95/95 as the percentage form',
+  ].join(', '),
+  () => {
+    // given
+    // when
+    const actual = parseCliOptions(['--coverage-threshold=0.95'])
+
+    // then
+    expect(actual).toEqual({
+      status: 'ok',
+      data: {
+        mode: 'run',
+        reporter: 'tap',
+        colorMode: 'auto',
+        coverageThresholdPct: { functionsPct: 95, linesPct: 95 },
+      },
+    })
+  },
+)
+
+test(
+  [
+    'given --coverage-threshold=1',
+    'when parsed',
+    'it should resolve to 100/100',
+  ].join(', '),
+  () => {
+    // given
+    // when
+    const actual = parseCliOptions(['--coverage-threshold=1'])
+
+    // then
+    expect(actual).toEqual({
+      status: 'ok',
+      data: {
+        mode: 'run',
+        reporter: 'tap',
+        colorMode: 'auto',
+        coverageThresholdPct: { functionsPct: 100, linesPct: 100 },
+      },
+    })
+  },
+)
+
+const invalidThresholdCases = ['101', '-1', 'abc']
+
+for (const raw of invalidThresholdCases) {
+  test(
+    [
+      `given --coverage-threshold=${raw}`,
+      'when parsed',
+      'it should return a usage error',
+    ].join(', '),
+    () => {
+      // given
+      // when
+      const actual = parseCliOptions([`--coverage-threshold=${raw}`])
+
+      // then
+      expect(actual.status).toBe('error')
+    },
+  )
+}
+
+test(
+  [
+    'given a bare --coverage-threshold with no value',
+    'when parsed',
+    'it should remain an unknown flag',
+  ].join(', '),
+  () => {
+    // given
+    // when
+    const actual = parseCliOptions(['--coverage-threshold'])
+
+    // then
+    expect(actual).toEqual({
+      status: 'error',
+      error: "unknown flag '--coverage-threshold'",
+    })
   },
 )

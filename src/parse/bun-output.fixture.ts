@@ -59,6 +59,27 @@ All files   |  100.00 |  100.00 |
 Ran 1 test across 1 file. [9.00ms]
 `
 
+export const lowCoverageFixture = `bun test v1.3.14 (0d9b296a)
+
+src/add.test.ts:
+(pass) adds [0.06ms]
+
+src/full.test.ts:
+(pass) a1 [0.03ms]
+-------------|---------|---------|-------------------
+File         | % Funcs | % Lines | Uncovered Line #s
+-------------|---------|---------|-------------------
+All files    |   62.50 |  100.00 |
+ src/add.ts  |   25.00 |  100.00 | 
+ src/full.ts |  100.00 |  100.00 | 
+-------------|---------|---------|-------------------
+
+ 2 pass
+ 0 fail
+ 2 expect() calls
+Ran 2 tests across 2 files. [78.00ms]
+`
+
 export const unhandledErrorFixture = `bun test v1.3.14 (0d9b296a)
 
 src/e.test.ts:

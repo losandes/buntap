@@ -335,6 +335,30 @@ test(
 
 test(
   [
+    'given a coverage-gate-failed event',
+    'when reported',
+    'it should print the failure signal as TAP comments',
+  ].join(', '),
+  () => {
+    // given
+    const event: TRunEvent = {
+      type: 'coverage-gate-failed',
+      thresholdPct: { functionsPct: 95, linesPct: 95 },
+      failing: [{ file: 'src/add.ts', functionsPct: 25, linesPct: 100 }],
+    }
+
+    // when
+    const { output } = next(initial, event)
+
+    // then
+    expect(output).toBe(
+      '# COVERAGE FAIL 1 file below the minimum (functions 95.00%, lines 95.00%)\n#   src/add.ts functions 25.00%, lines 100.00%\n',
+    )
+  },
+)
+
+test(
+  [
     'given a run-end event with a summary',
     'when reported',
     'it should print the plan and the totals as comments',

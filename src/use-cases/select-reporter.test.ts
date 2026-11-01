@@ -21,7 +21,12 @@ for (const { reporter, expectedOutput } of cases) {
     ].join(', '),
     () => {
       // given
-      const options = { mode: 'run', reporter, colorMode: 'auto' } as const
+      const options = {
+        mode: 'run',
+        reporter,
+        colorMode: 'auto',
+        coverageThresholdPct: undefined,
+      } as const
 
       // when
       const instance = selectReporter(deps)(options)
@@ -45,7 +50,12 @@ test(
   ].join(', '),
   () => {
     // given
-    const options = { mode: 'run', reporter: 'tap', colorMode: 'auto' } as const
+    const options = {
+      mode: 'run',
+      reporter: 'tap',
+      colorMode: 'auto',
+      coverageThresholdPct: undefined,
+    } as const
 
     // when
     const instance = selectReporter(deps)(options)
