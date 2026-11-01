@@ -355,3 +355,114 @@ test(
     expect(code).toBe(0)
   },
 )
+
+test(
+  [
+    'given both a --coverage-threshold flag and a bunfig.toml coverageThreshold',
+    'when run against the low-coverage fixture',
+    'it should use the flag and never consult bunfig.toml',
+  ].join(', '),
+  async () => {
+    // given a bunfig.toml threshold low enough to pass the low-coverage fixture,
+    // and a flag threshold high enough to fail it, so the two disagree on the verdict
+    let readCount = 0
+    const { deps, stdout } = makeDeps(lowCoverageFixture, {
+      readTextFile: () => {
+        readCount += 1
+        return '[test]\ncoverageThreshold = 0.1\n'
+      },
+    })
+
+    // when
+    const code = await main(deps)(['--coverage-threshold=0.95'])
+
+    // then the flag's stricter threshold wins and the file is never touched
+    expect(code).toBe(3)
+    expect(stdout()).toContain('COVERAGE FAIL')
+    expect(readCount).toBe(0)
+  },
+)
+
+test(
+  [
+    'given a bunfig.toml whose coverageThreshold cannot be interpreted',
+    'when run with no --coverage-threshold flag',
+    'it should warn on stderr, apply no gate, and still print the coverage table',
+  ].join(', '),
+  async () => {
+    // given
+    const { deps, stdout, stderr } = makeDeps(lowCoverageFixture, {
+      readTextFile: () => '[test]\ncoverageThreshold = "not a number"\n',
+    })
+
+    // when
+    const code = await main(deps)([])
+
+    // then
+    expect(stderr()).toBe(
+      'buntap: ignoring unreadable coverageThreshold in bunfig.toml\n',
+    )
+    expect(stdout()).toContain('src/add.ts')
+    expect(stdout()).not.toContain('COVERAGE FAIL')
+    expect(code).toBe(0)
+  },
+)
+
+test(
+  [
+    'given a bare --coverage-threshold flag with no value',
+    'when run against any fixture',
+    'it should be an unknown-flag usage error and exit 2',
+  ].join(', '),
+  async () => {
+    // given
+    const { deps, stderr } = makeDeps(coverageFixture)
+
+    // when
+    const code = await main(deps)(['--coverage-threshold'])
+
+    // then
+    expect(code).toBe(2)
+    expect(stderr()).toContain('Usage:')
+  },
+)
+
+test(
+  [
+    'given a --coverage-threshold value out of the 0-100/0-1 range',
+    'when run against any fixture',
+    'it should be a usage error on stderr and exit 2, never a gate',
+  ].join(', '),
+  async () => {
+    // given
+    const { deps, stderr } = makeDeps(coverageFixture)
+
+    // when
+    const code = await main(deps)(['--coverage-threshold=101'])
+
+    // then
+    expect(code).toBe(2)
+    expect(stderr()).toContain('Usage:')
+  },
+)
+
+test(
+  [
+    'given a fixture with no coverage table at all',
+    'when run with a coverage threshold configured',
+    'it should not emit a coverage-gate-failed signal or a nonzero exit from the gate',
+  ].join(', '),
+  async () => {
+    // given
+    const { deps, stdout } = makeDeps(mixedResultsFixture)
+
+    // when
+    const code = await main(deps)(['--coverage-threshold=0.95'])
+
+    // then
+    // this fixture has real test failures, so exit 1 proves those are what is
+    // being reported — not a coverage gate that had nothing to gate
+    expect(stdout()).not.toContain('COVERAGE FAIL')
+    expect(code).toBe(1)
+  },
+)
