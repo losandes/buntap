@@ -1,0 +1,29 @@
+// `Promise.all()` is risky because it fails fast: when any promise rejects,
+// the aggregate promise immediately rejects, discarding access to the other
+// results. However, the remaining operations continue executing, potentially
+// causing side effects or failures after the caller has already moved on.
+//
+// `Promise.allSettled()` is generally a safer default for independent
+// concurrent operations because it:
+//
+// - Waits for every promise to settle, whether fulfilled or rejected.
+// - Preserves each operation's outcome, allowing explicit error handling.
+// - Supports partial success and prevents one failure from obscuring other results.
+//
+// Recommendation: Prefer `Promise.allSettled()` for independent operations,
+// especially those with side effects. Use `Promise.all()` when all results are
+// required and failing fast is intentional.
+//
+// Important: Neither method cancels outstanding operations or provides
+// transactional atomicity. `allSettled()` also requires callers to inspect and
+// handle rejected results explicitly.
+
+language js
+
+`Promise.all($args)` as $call where {
+  register_diagnostic(
+    span = $call,
+    message = "Promise.all discards completed work when any item rejects. Use Promise.allSettled and report the failure margin. If this is a fixed tuple where every value is required, suppress it with `// biome-ignore lint/plugin/no-promise-all: <reason>`.",
+    severity = "error"
+  )
+}

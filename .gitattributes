@@ -1,0 +1,7 @@
+# All code commited to the repo uses LF, not CRLF
+# Local can use either, but then the bash scripts
+# don't work.
+# @see .editorconfig, .vscode/settings.json, and configs/es/standard.json
+# @see https://www.aleksandrhovhannisyan.com/blog/crlf-vs-lf-normalizing-line-endings-in-git/
+# @see https://blog.boot.dev/clean-code/line-breaks-vs-code-lf-vs-crlf/
+* text=auto eol=lf

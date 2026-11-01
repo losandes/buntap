@@ -1,0 +1,244 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.2.0/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "ignoreUnknown": false,
+    "includes": [
+      "**/src/**/*.ts",
+      "**/src/**/*.tsx",
+      "**/src/**/*.js",
+      "**/src/**/*.jsx",
+      "**/configs/**/*.js",
+      "**/scripts/**/*.js",
+      "**/*.ts",
+      "**/*.js",
+      "**/.vscode/**/*",
+      "**/index.html",
+      "**/vite.config.js",
+      "!**/src/routeTree.gen.ts",
+      "!**/dist",
+      "!**/build",
+      "!**/node_modules",
+      "!**/.next",
+      "!**/coverage"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineEnding": "lf",
+    "lineWidth": 80,
+    "includes": [
+      "**",
+      "!**/src/routeTree.gen.ts"
+    ]
+  },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "style": {
+        "useConst": "error",
+        "noUnusedTemplateLiteral": "off",
+        "useTemplate": "warn",
+        "noNegationElse": "error",
+        "useCollapsedElseIf": "error",
+        "useConsistentArrayType": {
+          "level": "error",
+          "options": {
+            "syntax": "shorthand"
+          }
+        },
+        "useForOf": "warn",
+        "useNumberNamespace": "error",
+        "useShorthandFunctionType": "error",
+        "useSingleVarDeclarator": "error",
+        "noRestrictedImports": {
+          "level": "error",
+          "options": {
+            "paths": {
+              "lodash": "Use ramda for functional programming patterns",
+              "moment": "Use native Date or date-fns instead",
+              "axios": "Use native fetch or a typed HTTP client",
+              "fp-ts": "We model results as discriminated unions on status, not Either/Option",
+              "purify-ts": "We model results as discriminated unions on status, not Maybe/Either",
+              "monet": "We model results as discriminated unions on status, not Maybe/Either",
+              "true-myth": "We model results as discriminated unions on status, not Maybe/Result"
+            }
+          }
+        },
+        "noParameterAssign": "error",
+        "noEnum": "warn",
+        "noExportedImports": "off",
+        "useConsistentMemberAccessibility": "error"
+      },
+      "correctness": {
+        "noUndeclaredVariables": "error",
+        "noUnusedVariables": {
+          "level": "error",
+          "options": {
+            "ignoreRestSiblings": true
+          }
+        },
+        "noUnusedImports": "error",
+        "useExhaustiveDependencies": "warn",
+        "useHookAtTopLevel": "error",
+        "noGlobalObjectCalls": "error",
+        "noUnusedFunctionParameters": "error"
+      },
+      "suspicious": {
+        "noAssignInExpressions": "error",
+        "noFunctionAssign": "error",
+        "noImplicitAnyLet": "error",
+        "noConfusingVoidType": "error",
+        "noExplicitAny": "error",
+        "noArrayIndexKey": "warn",
+        "noSkippedTests": "error",
+        "useAwait": "error",
+        "noVar": "error",
+        "noConsole": {
+          "level": "error",
+          "options": {}
+        }
+      },
+      "complexity": {
+        "noForEach": "off",
+        "useLiteralKeys": "error",
+        "noUselessFragments": "error",
+        "noUselessRename": "error",
+        "noUselessSwitchCase": "error",
+        "noUselessTypeConstraint": "error",
+        "useArrowFunction": "warn",
+        "useOptionalChain": "error",
+        "useSimplifiedLogicExpression": "error"
+      },
+      "security": {
+        "noDangerouslySetInnerHtml": "error"
+      },
+      "a11y": {
+        "recommended": true,
+        "noLabelWithoutControl": "error",
+        "noNoninteractiveElementInteractions": "error",
+        "noSvgWithoutTitle": "error",
+        "useAriaPropsSupportedByRole": "error",
+        "useMediaCaption": "error",
+        "useValidAutocomplete": "error",
+        "useFocusableInteractive": "error",
+        "useSemanticElements": "error",
+        "noStaticElementInteractions": "error"
+      },
+      "performance": {
+        "noDelete": "error",
+        "noAccumulatingSpread": "warn"
+      },
+      "nursery": {}
+    }
+  },
+  "javascript": {
+    "globals": [
+      "Bun"
+    ],
+    "formatter": {
+      "quoteStyle": "single",
+      "semicolons": "asNeeded",
+      "trailingCommas": "all",
+      "bracketSpacing": true,
+      "bracketSameLine": false,
+      "quoteProperties": "asNeeded",
+      "arrowParentheses": "always"
+    },
+    "parser": {
+      "unsafeParameterDecoratorsEnabled": true
+    }
+  },
+  "json": {
+    "formatter": {
+      "trailingCommas": "none"
+    }
+  },
+  "plugins": [
+    "./.biome/no-promise-all.grit",
+    "./.biome/no-array-mutation.grit",
+    "./.biome/no-object-mutation.grit",
+    "./.biome/no-intermediate-try-catch.grit"
+  ],
+  "overrides": [
+    {
+      "includes": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/test/**/*.ts",
+        "**/tests/**/*.ts"
+      ],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": {
+              "level": "off",
+              "options": {
+                "allow": [
+                  "log"
+                ]
+              }
+            },
+            "noExplicitAny": "warn"
+          },
+          "complexity": {
+            "noForEach": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "**/configs/**/*.js",
+        "**/scripts/**/*.js",
+        "**/*.config.js"
+      ],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": {
+              "level": "off",
+              "options": {
+                "allow": [
+                  "log"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "**/src/**/*.fixture.ts",
+        "**/src/**/*.fixture.test.ts"
+      ],
+      "linter": {
+        "rules": {
+          "style": {},
+          "complexity": {
+            "noForEach": "off"
+          },
+          "suspicious": {
+            "noVar": "off"
+          }
+        }
+      }
+    }
+  ]
+}

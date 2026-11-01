@@ -1,0 +1,37 @@
+// Throwing exceptions conflicts with functional programming because it
+// introduces an implicit control-flow path outside a function's return value,
+// making its behavior harder to reason about, compose, and test.
+//
+// This creates several problems:
+//
+// - Hidden failure paths: A function's return type does not necessarily
+//   communicate that it can fail.
+// - Broken composition: Exceptions bypass ordinary return-value processing and
+//   propagate until caught.
+// - Reduced predictability: Callers must account for failures that are not
+//   explicitly represented in the function's contract.
+// - Scattered error handling: Exception handling can become distributed across
+//   layers rather than handled through consistent, composable operations.
+//
+// Recommendation: Represent expected failures as values using explicit result
+// types or settlements, such as `Result<T, E>`. This makes success and failure
+// part of the function's contract and allows callers to handle both through
+// ordinary composition.
+//
+// Principle: Failures are outcomes, not exceptional control flow.
+//
+// Scope clarification: Throwing is not universally forbidden in functional
+// programming. Some functional languages support exceptions. The rule enforces
+// a stronger architectural convention: expected failures must be returned as
+// values, while exceptional failures may propagate at explicitly designated
+// boundaries.
+
+language js
+
+`throw $value` as $stmt where {
+  register_diagnostic(
+    span = $stmt,
+    message = "Return the failure instead of throwing it. An expected failure is a value the caller can handle — return a settlement, and let the caller decide. If this is a boundary that must throw, suppress with `// biome-ignore lint/plugin/no-throw: <reason>`.",
+    severity = "error"
+  )
+}

@@ -1,0 +1,346 @@
+// Mutating objects in place can introduce unintended side effects and hidden
+// dependencies, making application behavior harder to reason about, test, and debug.
+//
+// This creates several problems:
+//
+// - Shared-state side effects: Modifying an object can unexpectedly affect
+//   other code holding a reference to it.
+// - Reduced predictability: Functions may change their inputs rather than
+//   produce new outputs, obscuring data flow.
+// - Harder debugging: The original state is lost, making it difficult to
+//   identify where and why values changed.
+// - Broken referential equality: Frameworks, memoization, and change-detection
+//   mechanisms may fail to recognize updates.
+// - Reduced composability: Functions that mutate shared objects are harder to
+//   reuse, test independently, and execute safely.
+//
+// Recommendation: Prefer constructing and returning new objects using spread
+// syntax or immutable transformations. Keep necessary mutation within clearly
+// defined ownership boundaries, such as adapters managing external APIs.
+//
+// Scope clarification: This rule detects direct property assignments and
+// `Object.assign()` mutations, with specific exceptions. It does not prohibit
+// all forms of object mutation or guarantee immutability.
+//
+// Principle: Transform values rather than modifying existing state.
+//
+// Three patterns are deliberately absent because something else already owns
+// them. Computed assignment `obj[key] = value` is reported by the array rule,
+// whose index pattern matches it; `delete obj.prop` is reported by Biome's
+// own noDelete; and a nested assignment `obj.a.b = 1` already matches the
+// plain property pattern, with the member expression bound as the object.
+//
+// Map and Set mutation is not covered. `.set` and `.add` are ordinary method
+// names, and flagging every call would report builders, emitters and request
+// objects that have nothing to do with collections.
+//
+// Mutating a locally built object that never escapes is harmless, and this
+// rule reports it anyway: GritQL matches syntax, not lifetimes. That is the
+// conservative trade — a visible false positive over a silent gap.
+
+language js
+
+or {
+  `$obj.$prop += $val` as $stmt where {
+    $obj <: not "this",
+    $prop <: not or {
+      "current", "displayName",
+      "style", "dataset", "innerHTML", "innerText", "textContent",
+      "className", "src", "href", "scrollTop", "scrollLeft",
+      "width", "height", "value", "checked", "disabled", "title",
+      "locals", "statusCode",
+      "length"
+    },
+    register_diagnostic(
+      span = $stmt,
+      message = "`+=` reads a property and writes it back. Build the new value and return it rather than editing the one you were given.",
+      severity = "error"
+    )
+  },
+  `$obj.$prop -= $val` as $stmt where {
+    $obj <: not "this",
+    $prop <: not or {
+      "current", "displayName",
+      "style", "dataset", "innerHTML", "innerText", "textContent",
+      "className", "src", "href", "scrollTop", "scrollLeft",
+      "width", "height", "value", "checked", "disabled", "title",
+      "locals", "statusCode",
+      "length"
+    },
+    register_diagnostic(
+      span = $stmt,
+      message = "`-=` reads a property and writes it back. Build the new value and return it rather than editing the one you were given.",
+      severity = "error"
+    )
+  },
+  `$obj.$prop *= $val` as $stmt where {
+    $obj <: not "this",
+    $prop <: not or {
+      "current", "displayName",
+      "style", "dataset", "innerHTML", "innerText", "textContent",
+      "className", "src", "href", "scrollTop", "scrollLeft",
+      "width", "height", "value", "checked", "disabled", "title",
+      "locals", "statusCode",
+      "length"
+    },
+    register_diagnostic(
+      span = $stmt,
+      message = "`*=` reads a property and writes it back. Build the new value and return it rather than editing the one you were given.",
+      severity = "error"
+    )
+  },
+  `$obj.$prop /= $val` as $stmt where {
+    $obj <: not "this",
+    $prop <: not or {
+      "current", "displayName",
+      "style", "dataset", "innerHTML", "innerText", "textContent",
+      "className", "src", "href", "scrollTop", "scrollLeft",
+      "width", "height", "value", "checked", "disabled", "title",
+      "locals", "statusCode",
+      "length"
+    },
+    register_diagnostic(
+      span = $stmt,
+      message = "`/=` reads a property and writes it back. Build the new value and return it rather than editing the one you were given.",
+      severity = "error"
+    )
+  },
+  `$obj.$prop %= $val` as $stmt where {
+    $obj <: not "this",
+    $prop <: not or {
+      "current", "displayName",
+      "style", "dataset", "innerHTML", "innerText", "textContent",
+      "className", "src", "href", "scrollTop", "scrollLeft",
+      "width", "height", "value", "checked", "disabled", "title",
+      "locals", "statusCode",
+      "length"
+    },
+    register_diagnostic(
+      span = $stmt,
+      message = "`%=` reads a property and writes it back. Build the new value and return it rather than editing the one you were given.",
+      severity = "error"
+    )
+  },
+  `$obj.$prop **= $val` as $stmt where {
+    $obj <: not "this",
+    $prop <: not or {
+      "current", "displayName",
+      "style", "dataset", "innerHTML", "innerText", "textContent",
+      "className", "src", "href", "scrollTop", "scrollLeft",
+      "width", "height", "value", "checked", "disabled", "title",
+      "locals", "statusCode",
+      "length"
+    },
+    register_diagnostic(
+      span = $stmt,
+      message = "`**=` reads a property and writes it back. Build the new value and return it rather than editing the one you were given.",
+      severity = "error"
+    )
+  },
+  `$obj.$prop ||= $val` as $stmt where {
+    $obj <: not "this",
+    $prop <: not or {
+      "current", "displayName",
+      "style", "dataset", "innerHTML", "innerText", "textContent",
+      "className", "src", "href", "scrollTop", "scrollLeft",
+      "width", "height", "value", "checked", "disabled", "title",
+      "locals", "statusCode",
+      "length"
+    },
+    register_diagnostic(
+      span = $stmt,
+      message = "`||=` reads a property and writes it back. Build the new value and return it rather than editing the one you were given.",
+      severity = "error"
+    )
+  },
+  `$obj.$prop &&= $val` as $stmt where {
+    $obj <: not "this",
+    $prop <: not or {
+      "current", "displayName",
+      "style", "dataset", "innerHTML", "innerText", "textContent",
+      "className", "src", "href", "scrollTop", "scrollLeft",
+      "width", "height", "value", "checked", "disabled", "title",
+      "locals", "statusCode",
+      "length"
+    },
+    register_diagnostic(
+      span = $stmt,
+      message = "`&&=` reads a property and writes it back. Build the new value and return it rather than editing the one you were given.",
+      severity = "error"
+    )
+  },
+  `$obj.$prop ??= $val` as $stmt where {
+    $obj <: not "this",
+    $prop <: not or {
+      "current", "displayName",
+      "style", "dataset", "innerHTML", "innerText", "textContent",
+      "className", "src", "href", "scrollTop", "scrollLeft",
+      "width", "height", "value", "checked", "disabled", "title",
+      "locals", "statusCode",
+      "length"
+    },
+    register_diagnostic(
+      span = $stmt,
+      message = "`??=` reads a property and writes it back. Build the new value and return it rather than editing the one you were given.",
+      severity = "error"
+    )
+  },
+  `$obj.$prop &= $val` as $stmt where {
+    $obj <: not "this",
+    $prop <: not or {
+      "current", "displayName",
+      "style", "dataset", "innerHTML", "innerText", "textContent",
+      "className", "src", "href", "scrollTop", "scrollLeft",
+      "width", "height", "value", "checked", "disabled", "title",
+      "locals", "statusCode",
+      "length"
+    },
+    register_diagnostic(
+      span = $stmt,
+      message = "`&=` reads a property and writes it back. Build the new value and return it rather than editing the one you were given.",
+      severity = "error"
+    )
+  },
+  `$obj.$prop |= $val` as $stmt where {
+    $obj <: not "this",
+    $prop <: not or {
+      "current", "displayName",
+      "style", "dataset", "innerHTML", "innerText", "textContent",
+      "className", "src", "href", "scrollTop", "scrollLeft",
+      "width", "height", "value", "checked", "disabled", "title",
+      "locals", "statusCode",
+      "length"
+    },
+    register_diagnostic(
+      span = $stmt,
+      message = "`|=` reads a property and writes it back. Build the new value and return it rather than editing the one you were given.",
+      severity = "error"
+    )
+  },
+  `$obj.$prop ^= $val` as $stmt where {
+    $obj <: not "this",
+    $prop <: not or {
+      "current", "displayName",
+      "style", "dataset", "innerHTML", "innerText", "textContent",
+      "className", "src", "href", "scrollTop", "scrollLeft",
+      "width", "height", "value", "checked", "disabled", "title",
+      "locals", "statusCode",
+      "length"
+    },
+    register_diagnostic(
+      span = $stmt,
+      message = "`^=` reads a property and writes it back. Build the new value and return it rather than editing the one you were given.",
+      severity = "error"
+    )
+  },
+  `$obj.$prop <<= $val` as $stmt where {
+    $obj <: not "this",
+    $prop <: not or {
+      "current", "displayName",
+      "style", "dataset", "innerHTML", "innerText", "textContent",
+      "className", "src", "href", "scrollTop", "scrollLeft",
+      "width", "height", "value", "checked", "disabled", "title",
+      "locals", "statusCode",
+      "length"
+    },
+    register_diagnostic(
+      span = $stmt,
+      message = "`<<=` reads a property and writes it back. Build the new value and return it rather than editing the one you were given.",
+      severity = "error"
+    )
+  },
+  `$obj.$prop >>= $val` as $stmt where {
+    $obj <: not "this",
+    $prop <: not or {
+      "current", "displayName",
+      "style", "dataset", "innerHTML", "innerText", "textContent",
+      "className", "src", "href", "scrollTop", "scrollLeft",
+      "width", "height", "value", "checked", "disabled", "title",
+      "locals", "statusCode",
+      "length"
+    },
+    register_diagnostic(
+      span = $stmt,
+      message = "`>>=` reads a property and writes it back. Build the new value and return it rather than editing the one you were given.",
+      severity = "error"
+    )
+  },
+  `$obj.$prop >>>= $val` as $stmt where {
+    $obj <: not "this",
+    $prop <: not or {
+      "current", "displayName",
+      "style", "dataset", "innerHTML", "innerText", "textContent",
+      "className", "src", "href", "scrollTop", "scrollLeft",
+      "width", "height", "value", "checked", "disabled", "title",
+      "locals", "statusCode",
+      "length"
+    },
+    register_diagnostic(
+      span = $stmt,
+      message = "`>>>=` reads a property and writes it back. Build the new value and return it rather than editing the one you were given.",
+      severity = "error"
+    )
+  },
+  `$obj.$prop++` as $stmt where {
+    $obj <: not "this",
+    register_diagnostic(span = $stmt, message = "++ mutates the property in place. Compute the next value and return it.", severity = "error")
+  },
+  `$obj.$prop--` as $stmt where {
+    $obj <: not "this",
+    register_diagnostic(span = $stmt, message = "-- mutates the property in place. Compute the next value and return it.", severity = "error")
+  },
+  `++$obj.$prop` as $stmt where {
+    $obj <: not "this",
+    register_diagnostic(span = $stmt, message = "++ mutates the property in place. Compute the next value and return it.", severity = "error")
+  },
+  `--$obj.$prop` as $stmt where {
+    $obj <: not "this",
+    register_diagnostic(span = $stmt, message = "-- mutates the property in place. Compute the next value and return it.", severity = "error")
+  },
+  `Reflect.set($args)` as $call where {
+    register_diagnostic(span = $call, message = "Reflect.set writes into an existing object; it is assignment with the syntax hidden. Build a new object with spread.", severity = "error")
+  },
+  `Object.defineProperty($args)` as $call where {
+    register_diagnostic(span = $call, message = "defineProperty changes an object that already exists. Declare the property where the object is built.", severity = "error")
+  },
+  `Object.defineProperties($args)` as $call where {
+    register_diagnostic(span = $call, message = "defineProperties changes an object that already exists. Declare the properties where the object is built.", severity = "error")
+  },
+  `Object.setPrototypeOf($args)` as $call where {
+    register_diagnostic(span = $call, message = "setPrototypeOf rewrites the prototype of a live object. Use Object.create or a class at construction.", severity = "error")
+  },
+  `$obj.$prop = $val` as $stmt where {
+    // Class-internal state. A design problem this rule cannot fix.
+    $obj <: not "this",
+    $prop <: not or {
+      // React: a ref is the documented escape hatch, and displayName is set
+      // on a component after definition because there is nowhere else.
+      "current", "displayName",
+      // The DOM, where assignment is the whole interface.
+      "style", "dataset", "innerHTML", "innerText", "textContent",
+      "className", "src", "href", "scrollTop", "scrollLeft",
+      "width", "height", "value", "checked", "disabled", "title",
+      // Server frameworks: the per-request channel a handler is given.
+      "locals", "statusCode",
+      // Node/Bun: the only way a CLI entry point reports its exit status to
+      // the shell that spawned it. There is no return value this reaches.
+      "exitCode",
+      // Owned by the array rule, which reports it in every layer.
+      "length"
+    },
+    register_diagnostic(
+      span = $stmt,
+      message = "This builds a new value rather than mutating an existing one. Return an object built with spread, or move the change into the transform that produced the value. If an external API requires assignment, that call belongs in the adapter that owns it.",
+      severity = "error"
+    )
+  },
+  `Object.assign($target, $rest)` as $call where {
+    // Assigning onto a fresh literal is construction, not mutation.
+    $target <: not `{ $_ }`,
+    register_diagnostic(
+      span = $call,
+      message = "Object.assign writes into its first argument. Build a new object with spread, or pass a fresh literal as the target.",
+      severity = "error"
+    )
+  }
+}

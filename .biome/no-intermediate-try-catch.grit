@@ -1,0 +1,50 @@
+// Intermediate `try-catch` blocks can conflict with functional programming by
+// introducing implicit control flow and distributing error handling across
+// functions, rather than representing failures as explicit, composable values.
+//
+// This creates several problems:
+//
+// - Reduced composability: Exceptions interrupt ordinary function composition
+//   and require separate handling paths.
+// - Hidden side effects: Catch blocks can silently suppress, transform, or
+//   replace failures, making behavior harder to predict.
+// - Inconsistent error handling: Different functions may interpret or handle
+//   the same failure differently.
+// - Reduced transparency: Callers cannot reliably determine failure outcomes
+//   from return values alone.
+//
+// Recommendation: Convert exceptions into explicit settlements (`Result<T, E>`)
+// through standardized helpers at well-defined boundaries. Functions can then
+// propagate and transform failures using ordinary return values.
+//
+// Principle: Make failure handling explicit, predictable, and composable.
+//
+// Nuance: `try-catch` is not inherently incompatible with functional
+// programming. This rule enforces a stricter architectural convention that
+// promotes functional composition and consistent error handling.
+
+language js
+
+or {
+  `try { $body } catch($err) { $handler } finally { $cleanup }` as $stmt where {
+    register_diagnostic(
+      span = $stmt,
+      message = "Avoid intermediate exception handling. Convert throwing operations into settlements using standardized helpers, or let unexpected exceptions propagate to the boundary responsible for handling them. If this IS that boundary, suppress with `// biome-ignore lint/plugin/no-intermediate-try-catch: <reason>`.",
+      severity = "error"
+    )
+  },
+  `try { $body } catch($err) { $handler }` as $stmt where {
+    register_diagnostic(
+      span = $stmt,
+      message = "Avoid intermediate exception handling. Convert throwing operations into settlements using standardized helpers, or let unexpected exceptions propagate to the boundary responsible for handling them. If this IS that boundary, suppress with `// biome-ignore lint/plugin/no-intermediate-try-catch: <reason>`.",
+      severity = "error"
+    )
+  },
+  `try { $body } catch { $handler }` as $stmt where {
+    register_diagnostic(
+      span = $stmt,
+      message = "A catch with no binding discards the error entirely, so nothing downstream can report what failed. Bind it and return a settlement, or suppress with `// biome-ignore lint/plugin/no-intermediate-try-catch: <reason>` if this is the boundary that owns it.",
+      severity = "error"
+    )
+  }
+}

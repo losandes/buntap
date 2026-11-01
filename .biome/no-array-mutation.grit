@@ -1,0 +1,104 @@
+// Mutating arrays in JavaScript is risky because it changes shared state in
+// place, potentially affecting other parts of the application that reference
+// the same array.
+//
+// This creates several problems:
+//
+// - Unpredictable side effects: Functions can silently modify data owned by
+//   their callers.
+// - Harder debugging: Changes become difficult to trace because the original
+//   values are lost.
+// - Broken referential equality: Frameworks and memoization mechanisms that
+//   rely on reference changes may fail to detect updates.
+// - Reduced predictability: Functions become harder to reason about, test,
+//   and safely compose.
+//
+// Recommendation: Prefer immutable operations such as `map()`, `filter()`,
+// `toSorted()`, and `toSpliced()` over mutating methods like `sort()`,
+// `splice()`, and `reverse()`.
+//
+// Mutation isn't inherently wrong, particularly for large, locally owned arrays.
+// However, immutability is a safer default because it makes data flow explicit
+// and behavior more predictable.
+
+language js
+
+or {
+  `$receiver.push($args)` as $call where {
+    register_diagnostic(
+      span = $call,
+      message = "push mutates in place. Accumulating with push is what map, filter and reduce are for; to append once, use [...xs, x].",
+      severity = "error"
+    )
+  },
+  `$receiver.unshift($args)` as $call where {
+    register_diagnostic(
+      span = $call,
+      message = "unshift mutates in place. Build a new array with [x, ...xs].",
+      severity = "error"
+    )
+  },
+  `$receiver.pop()` as $call where {
+    register_diagnostic(
+      span = $call,
+      message = "pop mutates in place, and conflates reading the last element with removing it. Use at(-1) to read and slice(0, -1) to drop.",
+      severity = "error"
+    )
+  },
+  `$receiver.shift()` as $call where {
+    register_diagnostic(
+      span = $call,
+      message = "shift mutates in place, and conflates reading the first element with removing it. Use at(0) to read and slice(1) to drop.",
+      severity = "error"
+    )
+  },
+  `$receiver.splice($args)` as $call where {
+    register_diagnostic(
+      span = $call,
+      message = "splice mutates in place. Use toSpliced, or build the array you want with filter and slice.",
+      severity = "error"
+    )
+  },
+  `$receiver.sort($args)` as $call where {
+    register_diagnostic(
+      span = $call,
+      message = "sort mutates the array it is called on. Use toSorted — it returns a new array and reads identically. Even where the receiver is a fresh array today, nothing at this line says so.",
+      severity = "error"
+    )
+  },
+  `$receiver.reverse($args)` as $call where {
+    register_diagnostic(
+      span = $call,
+      message = "reverse mutates the array it is called on. Use toReversed — it returns a new array and reads identically. Even where the receiver is a fresh array today, nothing at this line says so.",
+      severity = "error"
+    )
+  },
+  `$receiver.fill($args)` as $call where {
+    register_diagnostic(
+      span = $call,
+      message = "fill overwrites in place. Build the array you want with Array.from({ length }, ...) or map.",
+      severity = "error"
+    )
+  },
+  `$receiver.copyWithin($args)` as $call where {
+    register_diagnostic(
+      span = $call,
+      message = "copyWithin overwrites in place. Build the array you want with slice and spread.",
+      severity = "error"
+    )
+  },
+  `$receiver.length = $val` as $stmt where {
+    register_diagnostic(
+      span = $stmt,
+      message = "Assigning to length truncates or extends in place. Use slice to take the part you want, or [] for an empty array.",
+      severity = "error"
+    )
+  },
+  `$receiver[$index] = $val` as $stmt where {
+    register_diagnostic(
+      span = $stmt,
+      message = "Index assignment mutates in place. Use with(index, value), which returns a new array. On an object, build a new one with spread.",
+      severity = "error"
+    )
+  }
+}
