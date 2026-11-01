@@ -131,7 +131,7 @@ test(
   [
     'given a run-end event',
     'when reported',
-    'it should print a one-line summary with the totals',
+    'it should print a blank line then a one-line summary with the totals',
   ].join(', '),
   () => {
     // given
@@ -156,7 +156,7 @@ test(
     const { output } = reporter.next(reporter.initial, event)
 
     // then
-    expect(output).toBe('3 tests, 2 passed, 1 failed, 0 skipped in 5.00ms\n')
+    expect(output).toBe('\n3 tests, 2 passed, 1 failed, 0 skipped in 5.00ms\n')
   },
 )
 

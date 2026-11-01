@@ -52,7 +52,7 @@ export const blockReporter = (deps: TReporterDeps): TReporter<TBlockState> => {
       if (event.type === 'run-end') {
         const totals = event.totals
         const summary = `${totals.tests} tests, ${totals.pass} passed, ${totals.fail} failed, ${totals.skip} skipped in ${formatDuration(totals.durationMs)}\n`
-        return { state, output: summary }
+        return { state, output: `\n${summary}` }
       }
       return { state, output: '' }
     },

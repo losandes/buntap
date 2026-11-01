@@ -182,7 +182,7 @@ export const nyanReporter = (deps: TReporterDeps): TReporter<TNyanState> => {
           state.failures.length > 0 ? `\n${state.failures.join('\n')}\n` : ''
         return {
           state: { ...state, totals: event.totals },
-          output: `${showCursor()}${failureDump}${summaryLine(event.totals)}`,
+          output: `${showCursor()}${failureDump}\n${summaryLine(event.totals)}`,
         }
       }
 

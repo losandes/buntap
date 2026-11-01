@@ -301,7 +301,7 @@ test(
   [
     'given a clean run',
     'when it ends',
-    'it should print the summary with no failure dump',
+    'it should print a blank line then the summary with no failure dump',
   ].join(', '),
   () => {
     // given
@@ -327,7 +327,7 @@ test(
 
     // then
     expect(output).toBe(
-      '\u001b[?25h1 tests, 1 passed, 0 failed, 0 skipped in 1.00ms\n',
+      '\u001b[?25h\n1 tests, 1 passed, 0 failed, 0 skipped in 1.00ms\n',
     )
   },
 )
