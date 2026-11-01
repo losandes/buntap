@@ -1,5 +1,4 @@
-# Every Activity this repository offers, every Planner it tunes, and the one
-# terminal Activity (gh-pull-request) it configures.
+# Every Activity this repository offers, and every Planner it tunes.
 #
 # An Activity is a discrete unit of work. A Lifecycle in crust.lifecycles.yaml
 # names Activities; this file defines them, so the same Activity takes part in
@@ -38,7 +37,6 @@
 # wins, with no other change.
 #
 # Personal deviations go in crust.activities.local.yaml, which is gitignored.
-# See <pi-crust>/cookbooks/examples/crust.activities.local.example.yaml for the whole surface.
 # A local layer may set any key and may add an Activity this file lacks.
 #
 # Available Gates:
@@ -49,7 +47,6 @@
 # - checks                runs this repository's own commands from routing.checks
 # - reproductionSupported ensures a diagnosis's reproduced, steps and confidence are mutually consistent
 # - verdictConsistent     ensures the review verdict is consistent with the repository's conventions
-# - issueCreated          ensures a reported GitHub issue URL, number and repo agree
 
 activities:
   # Implements the selected plan, and lands it.
@@ -68,7 +65,7 @@ activities:
   - name: code-review
     output: reviewOutput
     gates: [artifactsExist, verdictConsistent]
-    model: openai/gpt-5.6-terra
+    # model: openai/gpt-5.6-terra
     thinking: high
     color: indigo
     purpose: Judge the change against this repository's ratified conventions, through its own review skill.
@@ -155,7 +152,7 @@ activities:
     gates: [artifactsExist, filesNonEmpty]
     input: changes                       # the run's own diff, not the activity before it
     commit: true                         # the write-up lands in its own commit
-    model: openai/gpt-5.6-luna
+    # model: openai/gpt-5.6-luna
     color: blue
     purpose: Write up the change that was just made, from the diff; document only.
     prompt_engineering:
@@ -221,7 +218,7 @@ activities:
   - name: outcome-review
     output: reviewOutput
     gates: [artifactsExist, verdictConsistent]
-    model: openai/gpt-5.6-terra
+    # model: openai/gpt-5.6-terra
     thinking: high
     color: lime
     purpose: Confirm that what was built is what was asked for; change nothing.
@@ -233,13 +230,16 @@ activities:
   - name: plan
     output: planOutput
     gates: [artifactsExist, filesNonEmpty]
-    model: fireworks/accounts/fireworks/models/kimi-k3
+    model: anthropic/claude-opus-5
+    # model: fireworks/accounts/fireworks/models/kimi-k3
     thinking: high
     color: violet
     purpose: Turn a request into a plan the builder can implement without asking questions.
     prompt_engineering:
       system: prompt-engineering/plan/system.md
       user: prompt-engineering/plan/user.md
+    harness_engineering:
+      - harness-engineering/subagents.ts      # registers the four subagent_* tools below
     writes:                        # the plan, and nothing in the repository itself
       - "{handoff}/plan.md"        # .pi-crust/data/sessions/{session_id}/context_handoff/
     tools:                         # full recon + write for plan.md; no edit — the planner never touches repo files
@@ -247,6 +247,10 @@ activities:
       - edit
       - read
       - write
+      - subagent_create            # extension tools MUST be named here or they are filtered out
+      - subagent_continue
+      - subagent_list
+      - subagent_remove
 
   - name: scout
     output: scoutOutput
@@ -256,12 +260,18 @@ activities:
     prompt_engineering:
       system: prompt-engineering/scout/system.md
       user: prompt-engineering/scout/user.md
+    harness_engineering:
+      - harness-engineering/subagents.ts    # registers the four subagent_* tools below
     writes: ['{handoff}/scout_findings.md'] # .pi-crust/data/sessions/{session_id}/context_handoff/
     tools:
       - bash
       - edit
       - read
       - write
+      - subagent_create            # extension tools MUST be named here or they are filtered out
+      - subagent_continue
+      - subagent_list
+      - subagent_remove
 
   # Reads adversarially. Demonstrated, plausible and speculative are three different claims.
   - name: security-research

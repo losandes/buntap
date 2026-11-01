@@ -25,14 +25,12 @@
 # else in these chains needs what came before it.
 #
 # Personal deviations go in crust.lifecycles.local.yaml, which is gitignored.
-# See <pi-crust>/cookbooks/examples/crust.lifecycles.local.example.yaml for the whole surface.
-
 
 lifecycles:
   - name: sdlc
     description: >-
-      The whole lifecycle, identify through code-review. Success criteria
-      written after the build.
+      The whole lifecycle, identify through code-review with test-driven
+      development: success criteria written before the build.
     stages:
       - name: discover
         strategy: serial
@@ -47,6 +45,17 @@ lifecycles:
         strategy: serial
         activities: [gh-pull-request]
 
+  - name: analyze
+    description: >-
+      The product lifecycle for evaluating a bug and planning the fix.
+    stages:
+      - name: discover
+        strategy: concurrent
+        activities: [identify, diagnose]
+      - name: plan
+        strategy: serial
+        activities: [plan]
+
   - name: discover
     description: >-
       The product lifecycle: identify, conceptualize, plan.
@@ -57,7 +66,7 @@ lifecycles:
 
   - name: deliver
     description: >-
-      The engineering lifecycle: build, test, and review.
+      The engineering lifecycle: test-first, build, and review.
     stages:
       - name: deliver
         strategy: serial
@@ -112,6 +121,9 @@ lifecycles:
       - name: prove
         strategy: serial
         activities: [plan, build]
+      - name: push
+        strategy: serial
+        activities: [gh-pull-request]
 
   # Named `gh-triage`, not `triage`: the latter is already the name of both
   # a Planner and its `just crust triage` recipe, and

@@ -81,11 +81,7 @@ defaults:
   # obvious spellings are matched and the rest are not, so if a path MUST NOT
   # leak, do not give that Activity `bash` — a partial defence described as
   # protection is worse than none.
-  # data_dir defaults to .pi-crust/data — runtime home: {data_dir}/sessions/{run_id}/{agent_name}/.
-  # Stating it here overrides a machine-level `defaults.data_dir` or
-  # `override: defaults.data_dir` in ~/.pi-crust/config/crust.config.yaml
-  # (references/config.md), which is how a worktree workflow centralises
-  # where runs live. Leave it unstated to let that machine layer answer.
+  data_dir: .pi-crust/data         # runtime home: {data_dir}/sessions/{run_id}/{agent_name}/
 
 # What this repository offers — the Activities and the Lifecycles — is in
 # crust.activities.yaml and crust.lifecycles.yaml beside this file. The order
@@ -113,44 +109,25 @@ routing:
   # check nobody declared cannot have passed. Those are different claims:
   # nothing declared is a repository that has not opted in, a rule that
   # matched nothing is one that opted in and left this change uncovered.
-  skills: []
-  checks: []
-
-  # EXAMPLE — the shape, with paths and commands from the repository crust was
-  # built in. None of them exist here until you say they do.
-  #
-  # skills:
-  #   - name: code-review
-  #     agents: [code-reviewer]          # omit to give it to every agent
-  #     when: ["**/*.ts", "**/*.tsx"]
-  #     path: .claude/skills/code-review
-  #
-  #   - name: respond-to-pr-comments    # how to ANSWER a review, not what to
-  #     agents: [build]                 # change — so no `when:` at all
-  #     activity_runs: [build_2]        # omit to give it to every activity run
-  #     path: .claude/skills/respond-to-pr-comments
-  #
-  # checks:
-  #   - name: test
-  #     when: ["**/*.ts"]
-  #     operation: test                  # lint | typecheck | build | test
-  #     argv: [bun, test]                # argv LIST, binaries by BARE NAME
-  #     timeout_seconds: 600
-  #
-  #   - name: lint
-  #     when: ["**/*.ts", "**/*.tsx"]
-  #     operation: lint
-  #     argv: [node_modules/.bin/biome, lint]
-  #     with_changed_paths: true         # append the matched paths to argv
-  #     timeout_seconds: 300
-  #
-  # `when:` globs are spelled from the GIT ROOT, because that is where changed
-  # paths are collected. Add `cwd:` when a command belongs to a subdirectory —
-  # a nested workspace, a package with its own config — and the paths handed to
-  # it are rebased onto that cwd so they still resolve:
-  #
-  #   - name: typecheck
-  #     when: ["packages/api/**/*.ts"]
-  #     operation: typecheck
-  #     cwd: packages/api
-  #     argv: [bun, x, tsc, --noEmit]
+  skills:
+    - name: code-review
+      agents: [code-reviewer]          # omit to give it to every agent
+      when: ["**/*.ts", "**/*.tsx"]
+      path: .claude/skills/code-review
+  checks:
+    - name: test
+      when: ["**/*.ts"]
+      operation: test                  # lint | typecheck | build | test
+      argv: [bun, run, test:ci]        # argv LIST, binaries by BARE NAME
+      timeout_seconds: 3000
+    - name: lint
+      when: ["**/*.ts", "**/*.tsx"]
+      operation: lint
+      argv: [node_modules/.bin/biome, lint]
+      with_changed_paths: true         # this repo doesn't lint green yet
+      timeout_seconds: 3000
+    - name: typecheck
+      when: ["**/*.ts"]
+      operation: typecheck
+      argv: [bun, x, tsc, --noEmit]
+      timeout_seconds: 3000

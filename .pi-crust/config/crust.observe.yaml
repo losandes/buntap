@@ -11,10 +11,7 @@
 # an `observability:` key, which is gitignored: everything below is reachable
 # from there, key by key, with the local value winning.
 
-# db defaults to .pi-crust/data/crust.db — the tracer writes here directly and
-# the UI polls it. Stating it here overrides a machine-level `observability.db`
-# or `override: observability.db` in ~/.pi-crust/config/crust.config.yaml
-# (references/config.md). Leave it unstated to let that machine layer answer.
+db: .pi-crust/data/crust.db        # tracer writes here directly; the UI polls it
 poll_ms: 500                       # visualizer live-poll cadence
 
 # The two servers `just crust observe` boots, and the ports every run assumes
