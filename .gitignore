@@ -1,0 +1,5 @@
+
+# crust runtime
+.pi-crust/data/
+.pi-crust/config/*.local.yaml
+.pi-crust/prompt-engineering/example/

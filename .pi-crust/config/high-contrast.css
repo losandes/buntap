@@ -1,0 +1,63 @@
+/*
+ * High contrast — the test of whether this theming system is real, and the
+ * worked example to copy when writing your own.
+ *
+ * Pure black and pure white at the extremes, hues pushed to their most
+ * saturated legible form, every gradient flattened to a flat fill, borders
+ * doubled, focus rings tripled. A theme that could only swap hex values could
+ * not express any of that, which is why gradients and widths are tokens too.
+ *
+ * It ships as a file in this repository rather than inside the app, so that
+ * the theme every team is most likely to want to adjust is the one they can
+ * actually open. Registered in crust.observe.yaml; delete both to drop it.
+ *
+ * Every channel is `R G B` without commas, so that components can take a
+ * slice of one with `rgb(var(--green-rgb) / .2)`. A colour written as a hex
+ * value here will render, and then fail everywhere something needs it
+ * translucent.
+ */
+[data-theme='high-contrast'] {
+  color-scheme: dark;
+
+  --bg-rgb: 0 0 0;
+  --panel-rgb: 0 0 0;
+  --panel-2-rgb: 20 20 20;
+  /* 1.16:1 against black. Slightly the strongest of the three, since this
+     theme exists for people who need edges — but in the same band, because
+     banding hurts legibility for them too. */
+  --zebra-rgb: 34 34 34;
+  --table-head-rgb: 20 20 20;
+  --panel-3-rgb: 10 10 10;
+  --border-rgb: 255 255 255;
+  --border-soft-rgb: 180 180 180;
+
+  --text-rgb: 255 255 255;
+  --dim-rgb: 235 235 235;
+  --faint-rgb: 205 205 205;
+
+  --green-rgb: 0 255 127;
+  --red-rgb: 255 85 85;
+  --blue-rgb: 102 204 255;
+  --amber-rgb: 255 200 0;
+  --purple-rgb: 219 160 255;
+  --cyan-rgb: 0 255 255;
+  --violet-rgb: 170 180 255;
+  --pink-rgb: 255 150 200;
+  --lime-rgb: 190 255 80;
+  --teal-rgb: 0 230 200;
+  --indigo-rgb: 150 160 255;
+  --orange-rgb: 255 165 60;
+  --rose-rgb: 255 130 150;
+  /* Same hue at oklch L .80 — 8.18:1 on black, past this theme's 7:1 floor. */
+  --hotpink-rgb: 255 107 199;
+
+  /* No depth illusions: gradients and shadows hide edges from someone who
+     needs edges. */
+  --surface: rgb(0 0 0);
+  --app-bg: rgb(0 0 0);
+
+  --border-width: 2px;
+  --focus-width: 3px;
+  --shadow-panel: none;
+  --glow-strength: 0.6;
+}
