@@ -8,14 +8,13 @@ root = "./src" # default "./src"
 # Whether to skip test files when computing coverage statistics.
 coverageSkipTestFiles = false # docs say default false, but I think it's true
 
-coverageThreshold = 0.9 # { line = 0.7, function = 0.8, statement = 0.9 }
+coverageThreshold = 0.95 # { line = 0.7, function = 0.8, statement = 0.9 }
 
 # Exclude specific files or file patterns from coverage reports using glob
 # patterns. Can be a single string pattern or an array of patterns.
-# coveragePathIgnorePatterns = [
-#   "../**/*.ts",
-#   "**/*.test.ts",
-# ]
+coveragePathIgnorePatterns = [
+  "**/bin.ts",
+]
 
 # Outputs for coverage reports.
 # "text" for printing to the console
