@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+CLAUDECODE=1 bun test --verbose --coverage "$@" 2>&1 | buntap --agent

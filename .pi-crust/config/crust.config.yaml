@@ -118,16 +118,16 @@ routing:
     - name: test
       when: ["**/*.ts"]
       operation: test                  # lint | typecheck | build | test
-      argv: [bun, run, test:ci]        # argv LIST, binaries by BARE NAME
+      argv: [bun, run, test:agent]     # argv LIST, binaries by BARE NAME
       timeout_seconds: 3000
     - name: lint
       when: ["**/*.ts", "**/*.tsx"]
       operation: lint
-      argv: [node_modules/.bin/biome, lint]
+      argv: [bun, run, lint]
       with_changed_paths: true         # this repo doesn't lint green yet
       timeout_seconds: 3000
     - name: typecheck
       when: ["**/*.ts"]
       operation: typecheck
-      argv: [bun, x, tsc, --noEmit]
+      argv: [bun, run, typecheck]
       timeout_seconds: 3000

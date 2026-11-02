@@ -4,24 +4,53 @@
   "description": "Pipe bun test output through a TAP14, nyan, markdown, block, or agent reporter",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
-  "engines": { "node": ">=22" },
-  "bin": { "buntap": "./dist/bin.js" },
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "buntap": "./dist/bin.js"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" }
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
   },
-  "files": ["dist", "README.md", "LICENSE"],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "sideEffects": false,
-  "publishConfig": { "access": "public" },
-  "keywords": ["bun", "bun-test", "tap", "tap14", "test-reporter", "nyan", "cli"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "bun",
+    "bun-test",
+    "tap",
+    "tap14",
+    "test-reporter",
+    "nyan",
+    "cli"
+  ],
   "scripts": {
+    "// BUILD": "=============================BUILD=============================",
     "build": "bun build ./src/bin.ts --target=node --format=esm --outdir=dist && tsc -p tsconfig.build.json",
-    "check": "biome check .",
+    "// LINT": "==============================LINT==============================",
+    "lint": "biome check .",
+    "lint:fix": "biome check . --fix",
+    "// TEST": "==============================TEST==============================",
+    "test": "./bin/test",
+    "test:agent": "./bin/test-agent",
+    "test:markdown": "./bin/test-markdown",
+    "test:verbose": "./bin/test-block --verbose --coverage",
+    "test:watch": "bun test --watch",
+    "// TYPECHECK": "=======================TYPECHECK===========================",
     "typecheck": "tsc --noEmit",
-    "test": "bun test",
-    "test:coverage": "bun test --coverage",
-    "test:ci": "bun test --coverage",
+    "// PUBLISH": "==========================PUBLISH============================",
     "prepublishOnly": "bun run check && bun run typecheck && bun run test:coverage && bun run build"
   },
   "devDependencies": {

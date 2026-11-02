@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.2.0/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.2.7/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -33,10 +33,7 @@
     "indentWidth": 2,
     "lineEnding": "lf",
     "lineWidth": 80,
-    "includes": [
-      "**",
-      "!**/src/routeTree.gen.ts"
-    ]
+    "includes": ["**", "!**/src/routeTree.gen.ts"]
   },
   "assist": {
     "actions": {
@@ -147,9 +144,7 @@
     }
   },
   "javascript": {
-    "globals": [
-      "Bun"
-    ],
+    "globals": ["Bun"],
     "formatter": {
       "quoteStyle": "single",
       "semicolons": "asNeeded",
@@ -189,9 +184,7 @@
             "noConsole": {
               "level": "off",
               "options": {
-                "allow": [
-                  "log"
-                ]
+                "allow": ["log"]
               }
             },
             "noExplicitAny": "warn"
@@ -214,9 +207,7 @@
             "noConsole": {
               "level": "off",
               "options": {
-                "allow": [
-                  "log"
-                ]
+                "allow": ["log"]
               }
             }
           }
@@ -224,10 +215,7 @@
       }
     },
     {
-      "includes": [
-        "**/src/**/*.fixture.ts",
-        "**/src/**/*.fixture.test.ts"
-      ],
+      "includes": ["**/src/**/*.fixture.ts", "**/src/**/*.fixture.test.ts"],
       "linter": {
         "rules": {
           "style": {},
