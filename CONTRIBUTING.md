@@ -4,7 +4,7 @@ Thank you for wanting to improve bun-test-reporters.
 
 ## Licensing of contributions
 
-bun-test-reporters is released under the [PolyForm Internal Use License 1.0.0](LICENSE).
+bun-test-reporters is released under the [MIT License](LICENSE).
 
 By submitting a contribution — a pull request, a patch, a code suggestion in an issue or a review — you agree that:
 
@@ -12,7 +12,7 @@ By submitting a contribution — a pull request, a patch, a code suggestion in a
 - Your contribution is licensed under the project licence in force at the time it is merged.
 - The maintainer may relicense the project, including your contribution, under different terms in future, without asking you again.
 
-That last point is the one worth being explicit about, because it is the one that is hard to fix later. bun-test-reporters is licensed restrictively today and may be opened up — a permissive or open-source licence is a likely future. Relicensing requires the permission of every copyright holder in the codebase, so a single contribution made without this agreement can block it for everyone. Asking once, here, avoids having to track people down years later.
+That last point is the one worth being explicit about, because it is the one that is hard to fix later. Relicensing requires the permission of every copyright holder in the codebase, so a single contribution made without this agreement can block it for everyone. Asking once, here, avoids having to track people down years later.
 
 This grant runs to the maintainer only. It does not give anyone else rights beyond the project licence, and it does not transfer your copyright: you keep it, and you may use your own contribution however you like elsewhere.
 
