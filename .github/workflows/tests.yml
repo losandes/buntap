@@ -1,14 +1,14 @@
 # This workflow installs dependencies, lints, type-checks, builds, and tests
-# the package on every push and pull request against main.
+# the package on every push and pull request against latest.
 # For more information see: https://github.com/oven-sh/setup-bun
 
 name: tests
 
 on:
   push:
-    branches: [main]
+    branches: [latest]
   pull_request:
-    branches: [main]
+    branches: [latest]
 
 jobs:
   build:
