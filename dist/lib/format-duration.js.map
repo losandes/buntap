@@ -1,0 +1,1 @@
+{"version":3,"file":"format-duration.js","sourceRoot":"","sources":["../../src/lib/format-duration.ts"],"names":[],"mappings":"AAAA,0EAA0E;AAC1E,MAAM,CAAC,MAAM,cAAc,GAAG,CAAC,UAA8B,EAAU,EAAE;IACvE,IAAI,UAAU,KAAK,SAAS;QAAE,OAAO,QAAQ,CAAA;IAC7C,OAAO,GAAG,UAAU,CAAC,OAAO,CAAC,CAAC,CAAC,IAAI,CAAA;AACrC,CAAC,CAAA"}
