@@ -71,7 +71,7 @@ Do not add `set -o pipefail` to this pipeline. `bunt` deliberately exits with bu
 | `agent`    | `summary`    | one line: overall percentages, file count, and the gate verdict            |
 | `markdown` | `markdown`   | a headline, a worst-first table, and bun's table folded behind `<details>` |
 | `nyan`     | `bar`        | a threshold-marked bar per file below `100%`, worst first                  |
-| `block`    | `failures`   | bun's table filtered to the header, `All files`, and the failing rows      |
+| `block`    | `bar`        | a threshold-marked bar per file below `100%`, worst first                  |
 
 `--coverage-report=<mode>` overrides the default for every reporter except `tap`, which always reports coverage in full; giving it any other mode is a usage error.
 
@@ -87,7 +87,7 @@ coverage  lines 99.93%  funcs 99.93%  ·  48 files  ·  all above 95%
 coverage  95% minimum
   src/parse/parse-run.ts              lines   82.40%  ███████████████████░░░░░┊░  FAIL  118-140, 203
   src/runner/bunt-runner.ts           funcs   91.00%  █████████████████████░░░┊░  FAIL  77, 91-94
-  src/cli.test.ts                     lines   99.52%  ███████████████████████┊█  ok    393-394
+  src/cli.test.ts                     lines   99.52%  ████████████████████████┊█  ok    393-394
 coverage  lines 94.10%  funcs 96.80%  ·  48 files  ·  2 below 95%
 ```
 

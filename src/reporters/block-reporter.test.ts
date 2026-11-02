@@ -247,7 +247,7 @@ test(
   [
     'given a coverage-gate-failed event',
     'when reported',
-    'it should print the failure signal verbatim',
+    'it should print a blank line then the failure signal verbatim',
   ].join(', '),
   () => {
     // given
@@ -265,7 +265,7 @@ test(
 
     // then
     expect(output).toBe(
-      'COVERAGE FAIL 1 file below the minimum (functions 95.00%, lines 95.00%)\n  src/add.ts functions 25.00%, lines 100.00%\n',
+      '\nCOVERAGE FAIL 1 file below the minimum (functions 95.00%, lines 95.00%)\n  src/add.ts functions 25.00%, lines 100.00%\n',
     )
   },
 )
@@ -281,15 +281,15 @@ const coverageFixture: readonly string[] = [
 
 test(
   [
-    "given a coverage passthrough event, in the block reporter's default failures mode",
+    "given a coverage passthrough event, in the block reporter's default bar mode",
     'when reported',
-    'it should print only the failing rows',
+    "it should print the bar table rather than bun's table",
   ].join(', '),
   () => {
     // given
     const reporter = blockReporter({
       ...deps,
-      coverageReport: 'failures',
+      coverageReport: 'bar',
       thresholdPct: { functionsPct: 95, linesPct: 95 },
     })
     const event: TRunEvent = {
@@ -303,7 +303,7 @@ test(
 
     // then
     expect(output).toBe(
-      '\n------------|---------|---------|-------------------\nFile        | % Funcs | % Lines | Uncovered Line #s\n------------|---------|---------|-------------------\nAll files   |   62.50 |   90.00 |\n src/add.ts |   25.00 |   90.00 | 4-7\n------------|---------|---------|-------------------\n',
+      '\ncoverage  95% minimum\n\n                            src/add.ts  funcs   25.00%  ██████░░░░░░░░░░░░░░░░░┊░  FAIL  4-7\ncoverage  lines 90.00%  funcs 62.50%  ·  1 files  ·  1 below 95%\n',
     )
   },
 )

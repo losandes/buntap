@@ -262,7 +262,7 @@ const badgeFor = (
   return failing ? styles.red('FAIL') : styles.green('ok  ')
 }
 
-/** §1.3.5/§1.3.6: a header line, up to ten rows below `100%`, an overflow note, then the summary line. */
+/** §1.3.5/§1.3.6: a header line, a blank line, up to ten rows below `100%`, an overflow note, then the summary line. */
 const renderBar = (
   _lines: readonly string[],
   deps: TCoverageReportDeps,
@@ -302,6 +302,7 @@ const renderBar = (
 
   return [
     header,
+    '',
     ...rowLines,
     ...overflow,
     ...renderSummary(deps, rows, totals),

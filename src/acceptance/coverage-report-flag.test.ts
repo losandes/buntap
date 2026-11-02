@@ -171,7 +171,7 @@ test(
     expect(help).toContain('agent: summary')
     expect(help).toContain('markdown: markdown')
     expect(help).toContain('nyan: bar')
-    expect(help).toContain('block: failures')
+    expect(help).toContain('block: bar')
   },
 )
 
@@ -179,7 +179,7 @@ test(
   [
     'given the low-coverage fixture with --block and no --coverage-report',
     'when run with --coverage-threshold=0.95',
-    "it should render block's failures default: the failing file but not the passing threshold-clear noise of the full table, and exit 3",
+    "it should render block's bar default: the failing file but not the passing threshold-clear noise of the full table, and exit 3",
   ].join(', '),
   async () => {
     // given

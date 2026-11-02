@@ -221,7 +221,7 @@ export const nyanReporter = (deps: TReporterDeps): TReporter<TNyanState> => {
             : ''
         const gateFailureDump =
           state.gateFailureLines.length > 0
-            ? `${state.gateFailureLines.join('\n')}\n`
+            ? `\n${state.gateFailureLines.join('\n')}\n`
             : ''
         return {
           state: { ...state, totals: event.totals },

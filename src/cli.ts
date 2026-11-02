@@ -50,7 +50,7 @@ Options:
   --coverage-report=<mode>  how coverage is rendered: full, failures, summary,
                             bar, or markdown; per-reporter default when absent
                             (tap: full, agent: summary, markdown: markdown,
-                            nyan: bar, block: failures); the tap reporter
+                            nyan: bar, block: bar); the tap reporter
                             always reports coverage in full
   --color       force colour on
   --no-color    force colour off

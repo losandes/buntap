@@ -42,7 +42,7 @@ const DEFAULT_COVERAGE_REPORT: Readonly<
   agent: 'summary',
   markdown: 'markdown',
   nyan: 'bar',
-  block: 'failures',
+  block: 'bar',
 }
 
 // §1.1.3: a bare `--coverage-report`, with no `=<mode>`, is still this flag

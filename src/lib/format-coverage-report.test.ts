@@ -173,7 +173,7 @@ test(
   [
     'given the shared fixture and a 95 threshold',
     'when rendered in bar',
-    'it should print a header, one row per file ordered worst-first, and the summary line last',
+    'it should print a header, a blank line, one row per file ordered worst-first, and the summary line last',
   ].join(', '),
   () => {
     // given
@@ -189,6 +189,7 @@ test(
     // then
     expect(actual).toEqual([
       'coverage  95% minimum',
+      '',
       '                src/parse/parse-run.ts  lines   82.40%  ████████████████████░░░┊░  FAIL  118-140, 203',
       '             src/runner/bunt-runner.ts  funcs   91.00%  ██████████████████████░┊░  FAIL  77, 91-94',
       '                       src/cli.test.ts  lines   99.52%  ███████████████████████┊█  ok    393-394',
@@ -231,7 +232,7 @@ test(
     const actual = renderCoverageReport(deps)(lines)
 
     // then
-    expect(actual.length).toBe(1 + 10 + 1 + 1)
+    expect(actual.length).toBe(1 + 1 + 10 + 1 + 1)
     expect(actual).toContain('… and 2 more files below 100%')
     expect(actual.at(-2)).toBe('… and 2 more files below 100%')
   },

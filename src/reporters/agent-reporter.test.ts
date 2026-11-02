@@ -190,7 +190,7 @@ test(
   [
     'given a coverage-gate-failed event',
     'when reported',
-    'it should print the failure signal verbatim',
+    'it should print a blank line then the failure signal verbatim',
   ].join(', '),
   () => {
     // given
@@ -208,7 +208,7 @@ test(
 
     // then
     expect(output).toBe(
-      'COVERAGE FAIL 1 file below the minimum (functions 95.00%, lines 95.00%)\n  src/add.ts functions 25.00%, lines 100.00%\n',
+      '\nCOVERAGE FAIL 1 file below the minimum (functions 95.00%, lines 95.00%)\n  src/add.ts functions 25.00%, lines 100.00%\n',
     )
   },
 )

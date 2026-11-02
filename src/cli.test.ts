@@ -644,7 +644,7 @@ test(
 
     // then
     expect(code).toBe(0)
-    expect(stderr()).toBe('buntap: 1 test passed - exiting 0\n')
+    expect(stderr()).toBe('\nbuntap: 1 test passed - exiting 0\n')
     expect(stdout()).not.toContain('buntap:')
   },
 )
@@ -716,7 +716,7 @@ test(
     // then
     expect(code).toBe(2)
     expect(stderr()).toBe(
-      'buntap: the runner stopped without reporting its exit code - exiting 2\n',
+      '\nbuntap: the runner stopped without reporting its exit code - exiting 2\n',
     )
   },
 )

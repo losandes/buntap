@@ -65,7 +65,7 @@ export const agentReporter = (deps: TReporterDeps): TReporter<TAgentState> => {
       if (event.type === 'coverage-gate-failed') {
         return {
           state,
-          output: `${formatCoverageGateFailure(event).join('\n')}\n`,
+          output: `\n${formatCoverageGateFailure(event).join('\n')}\n`,
         }
       }
       if (event.type === 'run-end') {

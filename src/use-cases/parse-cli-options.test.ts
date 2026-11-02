@@ -51,7 +51,7 @@ for (const { flag, reporter } of reporterFlagCases) {
       const defaults = {
         nyan: 'bar',
         markdown: 'markdown',
-        block: 'failures',
+        block: 'bar',
         agent: 'summary',
       } as const
 
@@ -389,7 +389,7 @@ const reporterDefaultModeCases = [
   { reporter: 'agent', flag: '--agent', mode: 'summary' },
   { reporter: 'markdown', flag: '--markdown', mode: 'markdown' },
   { reporter: 'nyan', flag: '--nyan', mode: 'bar' },
-  { reporter: 'block', flag: '--block', mode: 'failures' },
+  { reporter: 'block', flag: '--block', mode: 'bar' },
 ] as const
 
 for (const { reporter, flag, mode } of reporterDefaultModeCases) {

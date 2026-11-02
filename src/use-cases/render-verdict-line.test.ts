@@ -5,7 +5,7 @@ test(
   [
     'given a verdict with a message and a code',
     'when rendered',
-    'it should print the buntap-prefixed verdict line',
+    'it should print the buntap-prefixed verdict line after a blank line',
   ].join(', '),
   () => {
     // given
@@ -15,6 +15,6 @@ test(
     const actual = renderVerdictLine(verdict)
 
     // then
-    expect(actual).toBe('buntap: 2 tests failed - exiting 1\n')
+    expect(actual).toBe('\nbuntap: 2 tests failed - exiting 1\n')
   },
 )
