@@ -1,3 +1,5 @@
+import { createConsoleStyles } from '../lib/console-styles.js'
+import { renderCoverageReport } from '../lib/format-coverage-report.js'
 import { formatDuration } from '../lib/format-duration.js'
 import type { TReporter, TReporterDeps } from '../typedefs/reporter.js'
 import type { TTotals } from '../typedefs/run-events.js'
@@ -70,15 +72,18 @@ const renderErrors = (failures: readonly TMarkdownFailure[]): string => {
   return `\n\n## Errors\n\n${sections}`
 }
 
+// §1.4.3: the rendered mode's own lines are placed directly under the
+// heading; `renderCoverageReport`'s `markdown` mode already supplies its
+// own headline, table, and folded `<details>` block (§2.5), so this
+// section no longer wraps them in a second fence of its own.
 const renderCoverage = (
-  coverageLines: readonly string[],
+  renderedLines: readonly string[],
   gateFailureLines: readonly string[],
 ): string => {
-  if (coverageLines.length === 0) return ''
-  const table = `\`\`\`text\n${coverageLines.join('\n')}\n\`\`\``
+  if (renderedLines.length === 0) return ''
   const gateSection =
     gateFailureLines.length === 0 ? '' : `\n\n${gateFailureLines.join('\n')}`
-  return `\n\n## Coverage\n\n${table}${gateSection}`
+  return `\n\n## Coverage\n\n${renderedLines.join('\n')}${gateSection}`
 }
 
 const renderTotals = (totals: TTotals): string =>
@@ -94,88 +99,99 @@ const renderTotals = (totals: TTotals): string =>
 
 /** §1.4.5: emitted once, from `end`, because the nested bullet tree needs every test seen before it can be rendered. */
 export const markdownReporter = (
-  _deps: TReporterDeps,
-): TReporter<TMarkdownState> => ({
-  initial: {
-    paths: [],
-    failures: [] as readonly TMarkdownFailure[],
-    totals: undefined,
-    coverageLines: [],
-    gateFailureLines: [],
-  },
+  deps: TReporterDeps,
+): TReporter<TMarkdownState> => {
+  const renderCoveragePassthrough = renderCoverageReport({
+    mode: deps.coverageReport,
+    styles: createConsoleStyles(deps.color),
+    thresholdPct: deps.thresholdPct,
+  })
 
-  next: (state, event) => {
-    if (event.type === 'test') {
-      const fullPath = [event.file ?? '(unknown file)', ...event.path]
-      const nextFailures =
-        event.status === 'fail'
-          ? [
+  return {
+    initial: {
+      paths: [],
+      failures: [] as readonly TMarkdownFailure[],
+      totals: undefined,
+      coverageLines: [],
+      gateFailureLines: [],
+    },
+
+    next: (state, event) => {
+      if (event.type === 'test') {
+        const fullPath = [event.file ?? '(unknown file)', ...event.path]
+        const nextFailures =
+          event.status === 'fail'
+            ? [
+                ...state.failures,
+                { name: event.name, diagnostics: event.diagnostics },
+              ]
+            : state.failures
+        return {
+          state: {
+            ...state,
+            paths: [...state.paths, fullPath],
+            failures: nextFailures,
+          },
+          output: '',
+        }
+      }
+      if (event.type === 'unhandled-error') {
+        const name = event.file ?? 'unhandled error'
+        return {
+          state: {
+            ...state,
+            paths: [...state.paths, [name]],
+            failures: [
               ...state.failures,
-              { name: event.name, diagnostics: event.diagnostics },
-            ]
-          : state.failures
-      return {
-        state: {
-          ...state,
-          paths: [...state.paths, fullPath],
-          failures: nextFailures,
-        },
-        output: '',
+              { name, diagnostics: event.diagnostics },
+            ],
+          },
+          output: '',
+        }
       }
-    }
-    if (event.type === 'unhandled-error') {
-      const name = event.file ?? 'unhandled error'
-      return {
-        state: {
-          ...state,
-          paths: [...state.paths, [name]],
-          failures: [
-            ...state.failures,
-            { name, diagnostics: event.diagnostics },
-          ],
-        },
-        output: '',
+      if (event.type === 'passthrough' && event.kind === 'coverage') {
+        return {
+          state: {
+            ...state,
+            coverageLines: [...state.coverageLines, ...event.lines],
+          },
+          output: '',
+        }
       }
-    }
-    if (event.type === 'passthrough' && event.kind === 'coverage') {
-      return {
-        state: {
-          ...state,
-          coverageLines: [...state.coverageLines, ...event.lines],
-        },
-        output: '',
+      if (event.type === 'coverage-gate-failed') {
+        const markdownLines = [
+          `**COVERAGE FAIL** ${event.failing.length} ${event.failing.length === 1 ? 'file' : 'files'} below the minimum (functions ${event.thresholdPct.functionsPct.toFixed(2)}%, lines ${event.thresholdPct.linesPct.toFixed(2)}%)`,
+          '',
+          ...event.failing.map(
+            (row) =>
+              `- \`${row.file}\` functions ${row.functionsPct.toFixed(2)}%, lines ${row.linesPct.toFixed(2)}%`,
+          ),
+        ]
+        return {
+          state: {
+            ...state,
+            gateFailureLines: [...state.gateFailureLines, ...markdownLines],
+          },
+          output: '',
+        }
       }
-    }
-    if (event.type === 'coverage-gate-failed') {
-      const markdownLines = [
-        `**COVERAGE FAIL** ${event.failing.length} ${event.failing.length === 1 ? 'file' : 'files'} below the minimum (functions ${event.thresholdPct.functionsPct.toFixed(2)}%, lines ${event.thresholdPct.linesPct.toFixed(2)}%)`,
-        '',
-        ...event.failing.map(
-          (row) =>
-            `- \`${row.file}\` functions ${row.functionsPct.toFixed(2)}%, lines ${row.linesPct.toFixed(2)}%`,
-        ),
-      ]
-      return {
-        state: {
-          ...state,
-          gateFailureLines: [...state.gateFailureLines, ...markdownLines],
-        },
-        output: '',
+      if (event.type === 'run-end') {
+        return { state: { ...state, totals: event.totals }, output: '' }
       }
-    }
-    if (event.type === 'run-end') {
-      return { state: { ...state, totals: event.totals }, output: '' }
-    }
-    return { state, output: '' }
-  },
+      return { state, output: '' }
+    },
 
-  end: (state) => {
-    const title = '# Tests'
-    const bullets = renderBullets(state.paths, 0)
-    const body = bullets.length > 0 ? `${title}\n\n${bullets}` : title
-    const errors = renderErrors(state.failures)
-    const coverage = renderCoverage(state.coverageLines, state.gateFailureLines)
-    const totals = renderTotals(state.totals ?? zeroTotals)
-    return `${body}${errors}${coverage}\n\n${totals}\n`
-  },
-})
+    end: (state) => {
+      const title = '# Tests'
+      const bullets = renderBullets(state.paths, 0)
+      const body = bullets.length > 0 ? `${title}\n\n${bullets}` : title
+      const errors = renderErrors(state.failures)
+      const coverage = renderCoverage(
+        renderCoveragePassthrough(state.coverageLines),
+        state.gateFailureLines,
+      )
+      const totals = renderTotals(state.totals ?? zeroTotals)
+      return `${body}${errors}${coverage}\n\n${totals}\n`
+    },
+  }
+}

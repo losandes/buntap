@@ -314,7 +314,9 @@ test(
     const line = encodeRunEvent({
       type: 'coverage-gate-failed',
       thresholdPct: { functionsPct: 95, linesPct: 95 },
-      failing: [{ file: 'src/add.ts', functionsPct: 25, linesPct: 100 }],
+      failing: [
+        { file: 'src/add.ts', functionsPct: 25, linesPct: 100, uncovered: [] },
+      ],
     })
 
     // when

@@ -1,5 +1,6 @@
 import { createConsoleStyles, cursorUp, hideCursor, showCursor, } from '../lib/console-styles.js';
 import { formatCoverageGateFailure } from '../lib/format-coverage-gate.js';
+import { renderCoverageReport } from '../lib/format-coverage-report.js';
 import { formatDuration } from '../lib/format-duration.js';
 import { foldTally, initialTally } from '../lib/tally.js';
 const NUMBER_OF_LINES = 4;
@@ -28,6 +29,11 @@ const faceFor = (tally) => {
 };
 export const nyanReporter = (deps) => {
     const styles = createConsoleStyles(deps.color);
+    const renderCoverage = renderCoverageReport({
+        mode: deps.coverageReport,
+        styles,
+        thresholdPct: deps.thresholdPct,
+    });
     const width = Math.floor(deps.columns * 0.75);
     const trajectoryWidthMax = Math.max(width - NYAN_CAT_WIDTH, 1);
     const appendRainbow = (trajectories, colorIndex, tick) => {
@@ -137,11 +143,12 @@ export const nyanReporter = (deps) => {
             }
             if (event.type === 'run-end') {
                 const failureDump = state.failures.length > 0 ? `\n${state.failures.join('\n')}\n` : '';
-                const coverageDump = state.coverageLines.length > 0
-                    ? `\n${state.coverageLines.join('\n')}\n`
+                const renderedCoverage = renderCoverage(state.coverageLines);
+                const coverageDump = renderedCoverage.length > 0
+                    ? `\n${renderedCoverage.join('\n')}\n`
                     : '';
                 const gateFailureDump = state.gateFailureLines.length > 0
-                    ? `${state.gateFailureLines.join('\n')}\n`
+                    ? `\n${state.gateFailureLines.join('\n')}\n`
                     : '';
                 return {
                     state: { ...state, totals: event.totals },

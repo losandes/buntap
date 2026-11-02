@@ -1,9 +1,16 @@
 import { expect, test } from 'bun:test'
+import { stripAnsi } from '../parse/strip-ansi.js'
 import type { TReporterDeps } from '../typedefs/reporter.js'
 import type { TRunEvent } from '../typedefs/run-events.js'
 import { nyanReporter } from './nyan-reporter.js'
 
-const deps: TReporterDeps = { columns: 80, isTty: true, color: true }
+const deps: TReporterDeps = {
+  columns: 80,
+  isTty: true,
+  color: true,
+  coverageReport: 'full',
+  thresholdPct: undefined,
+}
 
 const passEvent = (name: string): TRunEvent => ({
   type: 'test',
@@ -188,7 +195,13 @@ test(
   ].join(', '),
   () => {
     // given
-    const narrowDeps: TReporterDeps = { columns: 20, isTty: true, color: true }
+    const narrowDeps: TReporterDeps = {
+      columns: 20,
+      isTty: true,
+      color: true,
+      coverageReport: 'full',
+      thresholdPct: undefined,
+    }
     const reporter = nyanReporter(narrowDeps)
 
     // when
@@ -212,7 +225,13 @@ test(
   ].join(', '),
   () => {
     // given
-    const narrowDeps: TReporterDeps = { columns: 20, isTty: true, color: true }
+    const narrowDeps: TReporterDeps = {
+      columns: 20,
+      isTty: true,
+      color: true,
+      coverageReport: 'full',
+      thresholdPct: undefined,
+    }
     const reporter = nyanReporter(narrowDeps)
 
     // when
@@ -444,7 +463,9 @@ test(
     const gateEvent: TRunEvent = {
       type: 'coverage-gate-failed',
       thresholdPct: { functionsPct: 95, linesPct: 95 },
-      failing: [{ file: 'src/add.ts', functionsPct: 25, linesPct: 100 }],
+      failing: [
+        { file: 'src/add.ts', functionsPct: 25, linesPct: 100, uncovered: [] },
+      ],
     }
     const afterCoverage = reporter.next(reporter.initial, coverageEvent)
     const afterGate = reporter.next(afterCoverage.state, gateEvent)
@@ -490,5 +511,91 @@ test(
 
     // then
     expect(actual).toBe('')
+  },
+)
+
+const coverageFixture: readonly string[] = [
+  '------------|---------|---------|-------------------',
+  'File        | % Funcs | % Lines | Uncovered Line #s',
+  '------------|---------|---------|-------------------',
+  'All files   |   62.50 |   90.00 |',
+  ' src/add.ts |   25.00 |   90.00 | 4-7',
+  '------------|---------|---------|-------------------',
+]
+
+const coverageRunEnd: TRunEvent = {
+  type: 'run-end',
+  summarySeen: true,
+  totals: {
+    pass: 1,
+    fail: 0,
+    skip: 0,
+    todo: 0,
+    errors: 0,
+    expectCalls: 1,
+    tests: 1,
+    files: 1,
+    durationMs: 1,
+  },
+}
+
+test(
+  [
+    "given buffered coverage lines, in nyan's default bar mode",
+    'when the run ends',
+    "it should render the bar table rather than bun's table",
+  ].join(', '),
+  () => {
+    // given
+    const reporter = nyanReporter({
+      ...deps,
+      coverageReport: 'bar',
+      thresholdPct: { functionsPct: 95, linesPct: 95 },
+    })
+    const coverageEvent: TRunEvent = {
+      type: 'passthrough',
+      kind: 'coverage',
+      lines: coverageFixture,
+    }
+    const afterCoverage = reporter.next(reporter.initial, coverageEvent)
+
+    // when
+    const { output } = reporter.next(afterCoverage.state, coverageRunEnd)
+
+    // then
+    expect(afterCoverage.output).toBe('')
+    expect(output).toContain('FAIL')
+    expect(output).toContain('src/add.ts')
+    expect(output).not.toContain('Uncovered Line #s')
+  },
+)
+
+test(
+  [
+    'given buffered coverage lines and an overridden --coverage-report=summary',
+    'when the run ends',
+    'it should render the summary line instead of the default',
+  ].join(', '),
+  () => {
+    // given
+    const reporter = nyanReporter({
+      ...deps,
+      coverageReport: 'summary',
+      thresholdPct: { functionsPct: 95, linesPct: 95 },
+    })
+    const coverageEvent: TRunEvent = {
+      type: 'passthrough',
+      kind: 'coverage',
+      lines: coverageFixture,
+    }
+    const afterCoverage = reporter.next(reporter.initial, coverageEvent)
+
+    // when
+    const { output } = reporter.next(afterCoverage.state, coverageRunEnd)
+
+    // then
+    expect(stripAnsi(output)).toContain(
+      'coverage  lines 90.00%  funcs 62.50%  ·  1 files  ·  1 below 95%',
+    )
   },
 )

@@ -61,7 +61,56 @@ Do not add `set -o pipefail` to this pipeline. `bunt` deliberately exits with bu
 
 ## Coverage
 
-`bun test --coverage`'s per-file coverage table is reproduced in every reporter, not just TAP. When a file falls below the configured minimum, buntap prints a `COVERAGE FAIL` block and exits `3`. The threshold comes from `--coverage-threshold=<n>` or from `[test].coverageThreshold` in `./bunfig.toml`; only the `lines` and `functions` keys of the inline-table form are evaluated (bun's text table has no statements column). A run with no threshold configured prints the table unchanged and exits `0`.
+`bun test --coverage`'s per-file coverage data is rendered in one of five modes - `full`, `failures`, `summary`, `bar`, `markdown` - chosen per reporter by default and overridable with `--coverage-report=<mode>`. When a file falls below the configured minimum, buntap prints a `COVERAGE FAIL` block and exits `3` in every mode; that block and the exit code never change. The threshold comes from `--coverage-threshold=<n>` or from `[test].coverageThreshold` in `./bunfig.toml`; only the `lines` and `functions` keys of the inline-table form are evaluated (bun's text table has no statements column). A run with no threshold configured still renders the chosen mode and exits `0`.
+
+### Coverage report modes
+
+| Reporter   | Default mode | What it shows                                                              |
+| ---------- | ------------ | -------------------------------------------------------------------------- |
+| `tap`      | `full`       | bun's table unchanged; pinned, and cannot be overridden to another mode    |
+| `agent`    | `summary`    | one line: overall percentages, file count, and the gate verdict            |
+| `markdown` | `markdown`   | a headline, a worst-first table, and bun's table folded behind `<details>` |
+| `nyan`     | `bar`        | a threshold-marked bar per file below `100%`, worst first                  |
+| `block`    | `bar`        | a threshold-marked bar per file below `100%`, worst first                  |
+
+`--coverage-report=<mode>` overrides the default for every reporter except `tap`, which always reports coverage in full; giving it any other mode is a usage error.
+
+`summary`, the line the agent reporter prints on a clean run:
+
+```text
+coverage  lines 99.93%  funcs 99.93%  ·  48 files  ·  all above 95%
+```
+
+`bar`, nyan's default:
+
+```text
+coverage  95% minimum
+  src/parse/parse-run.ts              lines   82.40%  ███████████████████░░░░░┊░  FAIL  118-140, 203
+  src/runner/bunt-runner.ts           funcs   91.00%  █████████████████████░░░┊░  FAIL  77, 91-94
+  src/cli.test.ts                     lines   99.52%  ████████████████████████┊█  ok    393-394
+coverage  lines 94.10%  funcs 96.80%  ·  48 files  ·  2 below 95%
+```
+
+`markdown`, markdown's default:
+
+````text
+**Coverage: 2 of 48 files below 95%** — lines 94.10%, funcs 96.80%
+
+| File | Lines | Funcs | Uncovered |
+| --- | --- | --- | --- |
+| `src/parse/parse-run.ts` | 82.40% | 97.00% | 118-140, 203 |
+| `src/runner/bunt-runner.ts` | 99.10% | 91.00% | 77, 91-94 |
+
+<details><summary>Full coverage table</summary>
+
+```text
+...bun's table, unmodified...
+```
+
+</details>
+````
+
+Colour is never the only carrier of a distinction: every mode renders the same words and numbers with colour off as with colour on.
 
 ### TAP (default)
 
@@ -127,17 +176,18 @@ Nothing for a passing test. For a failure: the file, the full test name, and the
 
 ## Flags
 
-| Flag                       | Effect                                                                                                                          |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `--nyan`                   | nyan cat reporter                                                                                                               |
-| `--markdown`               | markdown reporter                                                                                                               |
-| `--block`                  | inverse-video block reporter                                                                                                    |
-| `--agent`                  | minimal output, verbose only on failure                                                                                         |
-| `--coverage-threshold=<n>` | fail with exit `3` when a file is below `<n>` (`0`-`1` or `0`-`100`); defaults to `[test].coverageThreshold` in `./bunfig.toml` |
-| `--color`                  | force colour on                                                                                                                 |
-| `--no-color`               | force colour off                                                                                                                |
-| `--help`                   | print usage and exit `0`                                                                                                        |
-| `--version`                | print the version and exit `0`                                                                                                  |
+| Flag                       | Effect                                                                                                                                                                                        |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--nyan`                   | nyan cat reporter                                                                                                                                                                             |
+| `--markdown`               | markdown reporter                                                                                                                                                                             |
+| `--block`                  | inverse-video block reporter                                                                                                                                                                  |
+| `--agent`                  | minimal output, verbose only on failure                                                                                                                                                       |
+| `--coverage-threshold=<n>` | fail with exit `3` when a file is below `<n>` (`0`-`1` or `0`-`100`); defaults to `[test].coverageThreshold` in `./bunfig.toml`                                                               |
+| `--coverage-report=<mode>` | how coverage is rendered: `full`, `failures`, `summary`, `bar`, or `markdown`; per-reporter default when absent (see [Coverage](#coverage)); the tap reporter always reports coverage in full |
+| `--color`                  | force colour on                                                                                                                                                                               |
+| `--no-color`               | force colour off                                                                                                                                                                              |
+| `--help`                   | print usage and exit `0`                                                                                                                                                                      |
+| `--version`                | print the version and exit `0`                                                                                                                                                                |
 
 Giving two reporter flags together, or any flag not listed above, is an error: `buntap` prints usage to stderr and exits `2` rather than silently ignoring it. Colour is otherwise on only when stdout is a TTY and `NO_COLOR` is unset.
 

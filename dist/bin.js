@@ -489,6 +489,8 @@ var detectInputMode = (firstNonEmptyLine) => decodeProtocolLine(firstNonEmptyLin
 // src/parse/parse-coverage-table.ts
 var splitCells = (line) => line.split("|").map((cell) => cell.trim());
 var findHeaderIndex = (rows) => rows.findIndex((cells) => cells[0] === "File");
+var findAllFilesIndex = (rows, headerIndex) => rows.slice(headerIndex + 1).findIndex((cells) => cells[0] === "All files");
+var toUncovered = (cell) => (cell ?? "").split(",").map((part) => part.trim()).filter((part) => part.length > 0);
 var parseCoverageTable = (lines) => {
   const rows = lines.map(splitCells);
   const headerIndex = findHeaderIndex(rows);
@@ -497,6 +499,7 @@ var parseCoverageTable = (lines) => {
   const header = rows[headerIndex];
   const funcsIndex = header.indexOf("% Funcs");
   const linesIndex = header.indexOf("% Lines");
+  const uncoveredIndex = header.indexOf("Uncovered Line #s");
   if (funcsIndex === -1 || linesIndex === -1)
     return [];
   const toRow = (cells) => {
@@ -507,9 +510,30 @@ var parseCoverageTable = (lines) => {
     const linesPct = Number(cells[linesIndex]);
     if (!(Number.isFinite(functionsPct) && Number.isFinite(linesPct)))
       return;
-    return { file, functionsPct, linesPct };
+    const uncovered = uncoveredIndex === -1 ? [] : toUncovered(cells[uncoveredIndex]);
+    return { file, functionsPct, linesPct, uncovered };
   };
   return rows.slice(headerIndex + 1).map(toRow).filter((row) => row !== undefined);
+};
+var parseCoverageTotals = (lines) => {
+  const rows = lines.map(splitCells);
+  const headerIndex = findHeaderIndex(rows);
+  if (headerIndex === -1)
+    return;
+  const header = rows[headerIndex];
+  const funcsIndex = header.indexOf("% Funcs");
+  const linesIndex = header.indexOf("% Lines");
+  if (funcsIndex === -1 || linesIndex === -1)
+    return;
+  const allFilesOffset = findAllFilesIndex(rows, headerIndex);
+  if (allFilesOffset === -1)
+    return;
+  const allFilesRow = rows[headerIndex + 1 + allFilesOffset];
+  const functionsPct = Number(allFilesRow[funcsIndex]);
+  const linesPct = Number(allFilesRow[linesIndex]);
+  if (!(Number.isFinite(functionsPct) && Number.isFinite(linesPct)))
+    return;
+  return { functionsPct, linesPct, files: parseCoverageTable(lines).length };
 };
 
 // src/use-cases/evaluate-coverage-gate.ts
@@ -541,7 +565,36 @@ var KNOWN_FLAGS = new Set([
   "--version"
 ]);
 var COVERAGE_THRESHOLD_PREFIX = "--coverage-threshold=";
-var isKnownFlag = (flag) => KNOWN_FLAGS.has(flag) || flag.startsWith(COVERAGE_THRESHOLD_PREFIX);
+var COVERAGE_REPORT_PREFIX = "--coverage-report=";
+var COVERAGE_REPORT_MODES = new Set([
+  "full",
+  "failures",
+  "summary",
+  "bar",
+  "markdown"
+]);
+var DEFAULT_COVERAGE_REPORT = {
+  tap: "full",
+  agent: "summary",
+  markdown: "markdown",
+  nyan: "bar",
+  block: "bar"
+};
+var isCoverageReportFlag = (flag) => flag === "--coverage-report" || flag.startsWith(COVERAGE_REPORT_PREFIX);
+var isKnownFlag = (flag) => KNOWN_FLAGS.has(flag) || flag.startsWith(COVERAGE_THRESHOLD_PREFIX) || isCoverageReportFlag(flag);
+var parseCoverageReportFlag = (argv) => {
+  const raw = argv.find(isCoverageReportFlag);
+  if (raw === undefined)
+    return { status: "ok", data: undefined };
+  const value = raw.startsWith(COVERAGE_REPORT_PREFIX) ? raw.slice(COVERAGE_REPORT_PREFIX.length) : "";
+  if (COVERAGE_REPORT_MODES.has(value)) {
+    return { status: "ok", data: value };
+  }
+  return {
+    status: "error",
+    error: `invalid --coverage-report value '${value}'`
+  };
+};
 var parseCoverageThresholdFlag = (argv) => {
   const raw = argv.find((flag) => flag.startsWith(COVERAGE_THRESHOLD_PREFIX));
   if (raw === undefined)
@@ -565,29 +618,42 @@ var parseCliOptions = (argv) => {
   if (coverageThreshold.status === "error") {
     return { status: "error", error: coverageThreshold.error };
   }
+  const coverageReport = parseCoverageReportFlag(argv);
+  if (coverageReport.status === "error") {
+    return { status: "error", error: coverageReport.error };
+  }
   if (argv.includes("--help"))
     return { status: "ok", data: { mode: "help" } };
   if (argv.includes("--version"))
     return { status: "ok", data: { mode: "version" } };
-  const reporters = argv.map((flag) => REPORTER_FLAGS[flag]).filter((reporter) => reporter !== undefined);
+  const reporters = argv.map((flag) => REPORTER_FLAGS[flag]).filter((reporter2) => reporter2 !== undefined);
   const distinctReporters = [...new Set(reporters)];
   if (distinctReporters.length > 1) {
     return { status: "error", error: "only one reporter flag may be given" };
   }
   const colorMode = argv.includes("--color") ? "on" : argv.includes("--no-color") ? "off" : "auto";
+  const reporter = distinctReporters[0] ?? "tap";
+  if (reporter === "tap" && coverageReport.data !== undefined && coverageReport.data !== "full") {
+    return {
+      status: "error",
+      error: "the tap reporter always reports coverage in full"
+    };
+  }
   return {
     status: "ok",
     data: {
       mode: "run",
-      reporter: distinctReporters[0] ?? "tap",
+      reporter,
       colorMode,
-      coverageThresholdPct: coverageThreshold.data
+      coverageThresholdPct: coverageThreshold.data,
+      coverageReport: coverageReport.data ?? DEFAULT_COVERAGE_REPORT[reporter]
     }
   };
 };
 
 // src/use-cases/render-verdict-line.ts
-var renderVerdictLine = (verdict) => `buntap: ${verdict.message} - exiting ${verdict.code}
+var renderVerdictLine = (verdict) => `
+buntap: ${verdict.message} - exiting ${verdict.code}
 `;
 
 // src/use-cases/resolve-exit-code.ts
@@ -680,6 +746,40 @@ var resolveProtocolVerdict = (state) => {
   return { code: 0, message: `${pluralTests(state.totals?.pass ?? 0)} passed` };
 };
 
+// src/lib/console-styles.ts
+var wrap = (open, close) => (input) => `\x1B[${open}m${input}\x1B[${close}m`;
+var passthrough = (input) => input;
+var createConsoleStyles = (color) => color ? {
+  green: wrap(32, 39),
+  red: wrap(31, 39),
+  yellow: wrap(33, 39),
+  cyan: wrap(96, 39),
+  black: wrap(30, 39),
+  bgGreen: wrap(42, 49),
+  bgRed: wrap(41, 49),
+  bgYellow: wrap(43, 49),
+  bgCyan: wrap(46, 49),
+  bgMagenta: wrap(45, 49),
+  dim: wrap(2, 22),
+  ansi256: (code, input) => `\x1B[38;5;${code}m${input}\x1B[0m`
+} : {
+  green: passthrough,
+  red: passthrough,
+  yellow: passthrough,
+  cyan: passthrough,
+  black: passthrough,
+  bgGreen: passthrough,
+  bgRed: passthrough,
+  bgYellow: passthrough,
+  bgCyan: passthrough,
+  bgMagenta: passthrough,
+  dim: passthrough,
+  ansi256: (_code, input) => input
+};
+var cursorUp = (lines) => lines > 0 ? `\x1B[${lines}A` : "";
+var hideCursor = () => "\x1B[?25l";
+var showCursor = () => "\x1B[?25h";
+
 // src/lib/format-coverage-gate.ts
 var pct = (value) => value.toFixed(2);
 var formatCoverageGateFailure = (event) => {
@@ -688,6 +788,192 @@ var formatCoverageGateFailure = (event) => {
   const headline = `COVERAGE FAIL ${failing.length} ${noun} below the minimum (functions ${pct(thresholdPct.functionsPct)}%, lines ${pct(thresholdPct.linesPct)}%)`;
   const rows = failing.map((row) => `  ${row.file} functions ${pct(row.functionsPct)}%, lines ${pct(row.linesPct)}%`);
   return [headline, ...rows];
+};
+
+// src/lib/format-coverage-report.ts
+var BAR_WIDTH = 24;
+var PATH_WIDTH = 36;
+var PCT_FIELD_WIDTH = 7;
+var MAX_BAR_ROWS = 10;
+var splitCells2 = (line) => line.split("|").map((cell) => cell.trim());
+var isRuleLine = (line) => /^-+(?:\|-+)*$/.test(line.trim());
+var rowFails = (row, thresholdPct) => row.functionsPct < thresholdPct.functionsPct || row.linesPct < thresholdPct.linesPct;
+var trimPct = (pct2) => String(pct2);
+var pctColor = (pct2, thresholdValue) => {
+  if (thresholdValue === undefined) {
+    if (pct2 >= 100)
+      return "green";
+    return pct2 >= 90 ? "yellow" : "red";
+  }
+  if (pct2 < thresholdValue)
+    return "red";
+  return pct2 <= thresholdValue + 5 ? "yellow" : "green";
+};
+var formatPct = (pct2) => `${pct2.toFixed(2)}%`.padStart(PCT_FIELD_WIDTH);
+var padPath = (path) => path.length <= PATH_WIDTH ? path.padStart(PATH_WIDTH) : `…${path.slice(path.length - (PATH_WIDTH - 1))}`;
+var lowerMetric = (row) => row.linesPct <= row.functionsPct ? { metric: "lines", pct: row.linesPct } : { metric: "funcs", pct: row.functionsPct };
+var rowsBelow100 = (rows) => rows.filter((row) => row.linesPct < 100 || row.functionsPct < 100).map((row) => ({ row, ...lowerMetric(row) })).toSorted((a, b) => a.pct - b.pct || a.row.file.localeCompare(b.row.file));
+var buildBar = (pct2, thresholdValue, styles) => {
+  const filled = Math.round(pct2 / 100 * BAR_WIDTH);
+  const cells = Array.from({ length: BAR_WIDTH }, (_, i) => i < filled ? "█" : "░");
+  const withMarker = thresholdValue === undefined ? cells : [
+    ...cells.slice(0, Math.max(0, Math.min(BAR_WIDTH, Math.round(thresholdValue / 100 * BAR_WIDTH)))),
+    "┊",
+    ...cells.slice(Math.max(0, Math.min(BAR_WIDTH, Math.round(thresholdValue / 100 * BAR_WIDTH))))
+  ];
+  const color = styles[pctColor(pct2, thresholdValue)];
+  return withMarker.map((cell) => cell === "█" ? color(cell) : cell).join("");
+};
+var colorizeCell = (segment, thresholdValue, styles) => {
+  const match = segment.match(/-?\d+(?:\.\d+)?/);
+  if (!match)
+    return segment;
+  const value = Number(match[0]);
+  const color = styles[pctColor(value, thresholdValue)];
+  return segment.replace(match[0], color(match[0]));
+};
+var colorizeDataLine = (line, funcsIndex, linesIndex, thresholdPct, styles) => line.split("|").map((segment, index) => {
+  if (index === funcsIndex)
+    return colorizeCell(segment, thresholdPct?.functionsPct, styles);
+  if (index === linesIndex)
+    return colorizeCell(segment, thresholdPct?.linesPct, styles);
+  return segment;
+}).join("|");
+var headerPositions = (lines) => {
+  const rows = lines.map(splitCells2);
+  const headerIndex = rows.findIndex((cells) => cells[0] === "File");
+  if (headerIndex === -1)
+    return { headerIndex: -1, funcsIndex: -1, linesIndex: -1 };
+  const header = rows[headerIndex];
+  return {
+    headerIndex,
+    funcsIndex: header.indexOf("% Funcs"),
+    linesIndex: header.indexOf("% Lines")
+  };
+};
+var renderFull = (lines, deps) => {
+  const { headerIndex, funcsIndex, linesIndex } = headerPositions(lines);
+  if (headerIndex === -1 || funcsIndex === -1 || linesIndex === -1)
+    return [...lines];
+  return lines.map((line, index) => {
+    if (isRuleLine(line))
+      return deps.styles.dim(line);
+    if (index === headerIndex)
+      return line;
+    const cells = splitCells2(line);
+    if (cells[0] === undefined || cells[0] === "")
+      return line;
+    return colorizeDataLine(line, funcsIndex, linesIndex, deps.thresholdPct, deps.styles);
+  });
+};
+var renderSummary = (deps, rows, totals) => {
+  if (totals === undefined)
+    return [];
+  const linesStr = deps.styles[pctColor(totals.linesPct, deps.thresholdPct?.linesPct)](formatPct(totals.linesPct).trim());
+  const funcsStr = deps.styles[pctColor(totals.functionsPct, deps.thresholdPct?.functionsPct)](formatPct(totals.functionsPct).trim());
+  const verdict = (() => {
+    if (deps.thresholdPct === undefined)
+      return deps.styles.yellow("no minimum configured");
+    const label = trimPct(deps.thresholdPct.linesPct);
+    const failing = rows.filter((row) => rowFails(row, deps.thresholdPct));
+    return failing.length === 0 ? deps.styles.green(`all above ${label}%`) : deps.styles.red(`${failing.length} below ${label}%`);
+  })();
+  return [
+    `coverage  lines ${linesStr}  funcs ${funcsStr}  ·  ${totals.files} files  ·  ${verdict}`
+  ];
+};
+var renderFailures = (lines, deps, rows, totals) => {
+  if (deps.thresholdPct === undefined)
+    return renderSummary(deps, rows, totals);
+  const failingFiles = new Set(rows.filter((row) => rowFails(row, deps.thresholdPct)).map((row) => row.file));
+  if (failingFiles.size === 0)
+    return renderSummary(deps, rows, totals);
+  const full = renderFull(lines, deps);
+  return full.filter((_, index) => {
+    const line = lines[index];
+    if (isRuleLine(line))
+      return true;
+    const cells = splitCells2(line);
+    if (cells[0] === "File")
+      return true;
+    if (cells[0] === "All files")
+      return true;
+    return failingFiles.has(cells[0] ?? "");
+  });
+};
+var badgeFor = (row, thresholdPct, styles) => {
+  const failing = thresholdPct !== undefined && rowFails(row, thresholdPct);
+  return failing ? styles.red("FAIL") : styles.green("ok  ");
+};
+var renderBar = (_lines, deps, rows, totals) => {
+  const label = deps.thresholdPct === undefined ? "no minimum configured" : `${trimPct(deps.thresholdPct.linesPct)}% minimum`;
+  const header = deps.styles.dim(`coverage  ${label}`);
+  const below = rowsBelow100(rows);
+  const selected = below.slice(0, MAX_BAR_ROWS);
+  const dropped = Math.max(below.length - MAX_BAR_ROWS, 0);
+  const rowLines = selected.map(({ row, metric, pct: pct2 }) => {
+    const thresholdValue = deps.thresholdPct === undefined ? undefined : metric === "lines" ? deps.thresholdPct.linesPct : deps.thresholdPct.functionsPct;
+    const path = padPath(row.file);
+    const metricLabel = metric.padEnd(5);
+    const pctField = deps.styles[pctColor(pct2, thresholdValue)](formatPct(pct2));
+    const bar = buildBar(pct2, thresholdValue, deps.styles);
+    const badge = badgeFor(row, deps.thresholdPct, deps.styles);
+    const uncovered = deps.styles.cyan(row.uncovered.join(", "));
+    return `  ${path}  ${metricLabel}  ${pctField}  ${bar}  ${badge}  ${uncovered}`;
+  });
+  const overflow = dropped > 0 ? [deps.styles.dim(`… and ${dropped} more files below 100%`)] : [];
+  return [
+    header,
+    "",
+    ...rowLines,
+    ...overflow,
+    ...renderSummary(deps, rows, totals)
+  ];
+};
+var markdownRow = (row) => `| \`${row.file}\` | ${row.linesPct.toFixed(2)}% | ${row.functionsPct.toFixed(2)}% | ${row.uncovered.join(", ")} |`;
+var renderMarkdown = (lines, deps, rows, totals) => {
+  if (totals === undefined)
+    return [];
+  const failing = deps.thresholdPct === undefined ? [] : rows.filter((row) => rowFails(row, deps.thresholdPct));
+  const headline = failing.length > 0 ? `**Coverage: ${failing.length} of ${totals.files} files below ${trimPct(deps.thresholdPct.linesPct)}%** — lines ${totals.linesPct.toFixed(2)}%, funcs ${totals.functionsPct.toFixed(2)}%` : `**Coverage: ${totals.linesPct.toFixed(2)}% lines, ${totals.functionsPct.toFixed(2)}% funcs across ${totals.files} files**`;
+  const tableRows = failing.length > 0 ? failing.toSorted((a, b) => {
+    const metricA = lowerMetric(a);
+    const metricB = lowerMetric(b);
+    return metricA.pct - metricB.pct || a.file.localeCompare(b.file);
+  }) : rowsBelow100(rows).slice(0, MAX_BAR_ROWS).map(({ row }) => row);
+  const table = tableRows.length === 0 ? [] : [
+    "| File | Lines | Funcs | Uncovered |",
+    "| --- | --- | --- | --- |",
+    ...tableRows.map(markdownRow)
+  ];
+  return [
+    headline,
+    "",
+    ...table,
+    "",
+    "<details><summary>Full coverage table</summary>",
+    "",
+    "```text",
+    ...lines,
+    "```",
+    "",
+    "</details>"
+  ];
+};
+var renderCoverageReport = (deps) => (lines) => {
+  if (lines.length === 0)
+    return [];
+  const rows = parseCoverageTable(lines);
+  const totals = parseCoverageTotals(lines);
+  if (deps.mode === "full")
+    return renderFull(lines, deps);
+  if (deps.mode === "failures")
+    return renderFailures(lines, deps, rows, totals);
+  if (deps.mode === "summary")
+    return renderSummary(deps, rows, totals);
+  if (deps.mode === "bar")
+    return renderBar(lines, deps, rows, totals);
+  return renderMarkdown(lines, deps, rows, totals);
 };
 
 // src/lib/format-duration.ts
@@ -711,83 +997,61 @@ var zeroTotals2 = {
 };
 var renderFailure = (file, name, diagnostics) => [`FAIL ${file ?? "(unknown file)"} > ${name}`, ...diagnostics].join(`
 `);
-var agentReporter = (_deps) => ({
-  initial: { totals: undefined },
-  next: (state, event) => {
-    if (event.type === "test" && event.status === "fail") {
-      return {
-        state,
-        output: `${renderFailure(event.file, event.name, event.diagnostics)}
+var agentReporter = (deps) => {
+  const styles = createConsoleStyles(deps.color);
+  const renderCoverage = renderCoverageReport({
+    mode: deps.coverageReport,
+    styles,
+    thresholdPct: deps.thresholdPct
+  });
+  return {
+    initial: { totals: undefined },
+    next: (state, event) => {
+      if (event.type === "test" && event.status === "fail") {
+        return {
+          state,
+          output: `${renderFailure(event.file, event.name, event.diagnostics)}
 `
-      };
-    }
-    if (event.type === "unhandled-error") {
-      return {
-        state,
-        output: `${renderFailure(event.file, event.message, event.diagnostics)}
+        };
+      }
+      if (event.type === "unhandled-error") {
+        return {
+          state,
+          output: `${renderFailure(event.file, event.message, event.diagnostics)}
 `
-      };
-    }
-    if (event.type === "passthrough" && event.kind === "coverage") {
-      return event.lines.length > 0 ? { state, output: `
-${event.lines.join(`
+        };
+      }
+      if (event.type === "passthrough" && event.kind === "coverage") {
+        const lines = renderCoverage(event.lines);
+        return lines.length > 0 ? { state, output: `
+${lines.join(`
 `)}
 ` } : { state, output: "" };
-    }
-    if (event.type === "coverage-gate-failed") {
-      return {
-        state,
-        output: `${formatCoverageGateFailure(event).join(`
+      }
+      if (event.type === "coverage-gate-failed") {
+        return {
+          state,
+          output: `
+${formatCoverageGateFailure(event).join(`
 `)}
 `
-      };
-    }
-    if (event.type === "run-end") {
-      return { state: { totals: event.totals }, output: "" };
-    }
-    return { state, output: "" };
-  },
-  end: (state) => {
-    const totals = state.totals ?? zeroTotals2;
-    return `${totals.tests} tests, ${totals.fail} failed, ${totals.skip} skipped, ${totals.todo} todo in ${formatDuration(totals.durationMs)}
+        };
+      }
+      if (event.type === "run-end") {
+        return { state: { totals: event.totals }, output: "" };
+      }
+      return { state, output: "" };
+    },
+    end: (state) => {
+      const totals = state.totals ?? zeroTotals2;
+      return `${totals.tests} tests, ${totals.fail} failed, ${totals.skip} skipped, ${totals.todo} todo in ${formatDuration(totals.durationMs)}
 `;
-  }
-});
-
-// src/lib/console-styles.ts
-var wrap = (open, close) => (input) => `\x1B[${open}m${input}\x1B[${close}m`;
-var passthrough = (input) => input;
-var createConsoleStyles = (color) => color ? {
-  green: wrap(32, 39),
-  red: wrap(31, 39),
-  yellow: wrap(33, 39),
-  cyan: wrap(96, 39),
-  black: wrap(30, 39),
-  bgGreen: wrap(42, 49),
-  bgRed: wrap(41, 49),
-  bgYellow: wrap(43, 49),
-  bgCyan: wrap(46, 49),
-  bgMagenta: wrap(45, 49),
-  ansi256: (code, input) => `\x1B[38;5;${code}m${input}\x1B[0m`
-} : {
-  green: passthrough,
-  red: passthrough,
-  yellow: passthrough,
-  cyan: passthrough,
-  black: passthrough,
-  bgGreen: passthrough,
-  bgRed: passthrough,
-  bgYellow: passthrough,
-  bgCyan: passthrough,
-  bgMagenta: passthrough,
-  ansi256: (_code, input) => input
+    }
+  };
 };
-var cursorUp = (lines) => lines > 0 ? `\x1B[${lines}A` : "";
-var hideCursor = () => "\x1B[?25l";
-var showCursor = () => "\x1B[?25h";
 
 // src/reporters/block-reporter.ts
-var badgeFor = (styles, status) => {
+var badgeFor2 = (styles, status) => {
   if (status === "pass")
     return styles.bgGreen(styles.black(" PASS "));
   if (status === "fail" || status === "error")
@@ -798,11 +1062,16 @@ var badgeFor = (styles, status) => {
 };
 var blockReporter = (deps) => {
   const styles = createConsoleStyles(deps.color);
+  const renderCoverage = renderCoverageReport({
+    mode: deps.coverageReport,
+    styles,
+    thresholdPct: deps.thresholdPct
+  });
   return {
     initial: { failures: [] },
     next: (state, event) => {
       if (event.type === "test") {
-        const badge = badgeFor(styles, event.status);
+        const badge = badgeFor2(styles, event.status);
         const line = `${badge} ${event.name}`;
         if (event.status !== "fail")
           return { state, output: `${line}
@@ -819,7 +1088,7 @@ ${detail}
         };
       }
       if (event.type === "unhandled-error") {
-        const badge = badgeFor(styles, "error");
+        const badge = badgeFor2(styles, "error");
         const detail = event.diagnostics.map((diagnosticLine) => `  ${diagnosticLine}`).join(`
 `);
         return {
@@ -832,15 +1101,17 @@ ${detail}
         };
       }
       if (event.type === "passthrough" && event.kind === "coverage") {
-        return event.lines.length > 0 ? { state, output: `
-${event.lines.join(`
+        const lines = renderCoverage(event.lines);
+        return lines.length > 0 ? { state, output: `
+${lines.join(`
 `)}
 ` } : { state, output: "" };
       }
       if (event.type === "coverage-gate-failed") {
         return {
           state,
-          output: `${formatCoverageGateFailure(event).join(`
+          output: `
+${formatCoverageGateFailure(event).join(`
 `)}
 `
         };
@@ -905,13 +1176,9 @@ ${failure.diagnostics.join(`
 
 ${sections}`;
 };
-var renderCoverage = (coverageLines, gateFailureLines) => {
-  if (coverageLines.length === 0)
+var renderCoverage = (renderedLines, gateFailureLines) => {
+  if (renderedLines.length === 0)
     return "";
-  const table = `\`\`\`text
-${coverageLines.join(`
-`)}
-\`\`\``;
   const gateSection = gateFailureLines.length === 0 ? "" : `
 
 ${gateFailureLines.join(`
@@ -920,7 +1187,8 @@ ${gateFailureLines.join(`
 
 ## Coverage
 
-${table}${gateSection}`;
+${renderedLines.join(`
+`)}${gateSection}`;
 };
 var renderTotals = (totals) => [
   "## Totals",
@@ -932,87 +1200,94 @@ var renderTotals = (totals) => [
   `- **duration**: ${formatDuration(totals.durationMs)}`
 ].join(`
 `);
-var markdownReporter = (_deps) => ({
-  initial: {
-    paths: [],
-    failures: [],
-    totals: undefined,
-    coverageLines: [],
-    gateFailureLines: []
-  },
-  next: (state, event) => {
-    if (event.type === "test") {
-      const fullPath = [event.file ?? "(unknown file)", ...event.path];
-      const nextFailures = event.status === "fail" ? [
-        ...state.failures,
-        { name: event.name, diagnostics: event.diagnostics }
-      ] : state.failures;
-      return {
-        state: {
-          ...state,
-          paths: [...state.paths, fullPath],
-          failures: nextFailures
-        },
-        output: ""
-      };
-    }
-    if (event.type === "unhandled-error") {
-      const name = event.file ?? "unhandled error";
-      return {
-        state: {
-          ...state,
-          paths: [...state.paths, [name]],
-          failures: [
-            ...state.failures,
-            { name, diagnostics: event.diagnostics }
-          ]
-        },
-        output: ""
-      };
-    }
-    if (event.type === "passthrough" && event.kind === "coverage") {
-      return {
-        state: {
-          ...state,
-          coverageLines: [...state.coverageLines, ...event.lines]
-        },
-        output: ""
-      };
-    }
-    if (event.type === "coverage-gate-failed") {
-      const markdownLines = [
-        `**COVERAGE FAIL** ${event.failing.length} ${event.failing.length === 1 ? "file" : "files"} below the minimum (functions ${event.thresholdPct.functionsPct.toFixed(2)}%, lines ${event.thresholdPct.linesPct.toFixed(2)}%)`,
-        "",
-        ...event.failing.map((row) => `- \`${row.file}\` functions ${row.functionsPct.toFixed(2)}%, lines ${row.linesPct.toFixed(2)}%`)
-      ];
-      return {
-        state: {
-          ...state,
-          gateFailureLines: [...state.gateFailureLines, ...markdownLines]
-        },
-        output: ""
-      };
-    }
-    if (event.type === "run-end") {
-      return { state: { ...state, totals: event.totals }, output: "" };
-    }
-    return { state, output: "" };
-  },
-  end: (state) => {
-    const title = "# Tests";
-    const bullets = renderBullets(state.paths, 0);
-    const body = bullets.length > 0 ? `${title}
+var markdownReporter = (deps) => {
+  const renderCoveragePassthrough = renderCoverageReport({
+    mode: deps.coverageReport,
+    styles: createConsoleStyles(deps.color),
+    thresholdPct: deps.thresholdPct
+  });
+  return {
+    initial: {
+      paths: [],
+      failures: [],
+      totals: undefined,
+      coverageLines: [],
+      gateFailureLines: []
+    },
+    next: (state, event) => {
+      if (event.type === "test") {
+        const fullPath = [event.file ?? "(unknown file)", ...event.path];
+        const nextFailures = event.status === "fail" ? [
+          ...state.failures,
+          { name: event.name, diagnostics: event.diagnostics }
+        ] : state.failures;
+        return {
+          state: {
+            ...state,
+            paths: [...state.paths, fullPath],
+            failures: nextFailures
+          },
+          output: ""
+        };
+      }
+      if (event.type === "unhandled-error") {
+        const name = event.file ?? "unhandled error";
+        return {
+          state: {
+            ...state,
+            paths: [...state.paths, [name]],
+            failures: [
+              ...state.failures,
+              { name, diagnostics: event.diagnostics }
+            ]
+          },
+          output: ""
+        };
+      }
+      if (event.type === "passthrough" && event.kind === "coverage") {
+        return {
+          state: {
+            ...state,
+            coverageLines: [...state.coverageLines, ...event.lines]
+          },
+          output: ""
+        };
+      }
+      if (event.type === "coverage-gate-failed") {
+        const markdownLines = [
+          `**COVERAGE FAIL** ${event.failing.length} ${event.failing.length === 1 ? "file" : "files"} below the minimum (functions ${event.thresholdPct.functionsPct.toFixed(2)}%, lines ${event.thresholdPct.linesPct.toFixed(2)}%)`,
+          "",
+          ...event.failing.map((row) => `- \`${row.file}\` functions ${row.functionsPct.toFixed(2)}%, lines ${row.linesPct.toFixed(2)}%`)
+        ];
+        return {
+          state: {
+            ...state,
+            gateFailureLines: [...state.gateFailureLines, ...markdownLines]
+          },
+          output: ""
+        };
+      }
+      if (event.type === "run-end") {
+        return { state: { ...state, totals: event.totals }, output: "" };
+      }
+      return { state, output: "" };
+    },
+    end: (state) => {
+      const title = "# Tests";
+      const bullets = renderBullets(state.paths, 0);
+      const body = bullets.length > 0 ? `${title}
 
 ${bullets}` : title;
-    const errors = renderErrors(state.failures);
-    const coverage = renderCoverage(state.coverageLines, state.gateFailureLines);
-    const totals = renderTotals(state.totals ?? zeroTotals3);
-    return `${body}${errors}${coverage}
+      const errors = renderErrors(state.failures);
+      const coverage = renderCoverage(renderCoveragePassthrough(state.coverageLines), state.gateFailureLines);
+      const totals = renderTotals(state.totals ?? zeroTotals3);
+      return `${body}${errors}${coverage}
 
 ${totals}
 `;
-  }
-});
+    }
+  };
+};
 
 // src/lib/tally.ts
 var initialTally = {
@@ -1062,6 +1337,11 @@ var faceFor = (tally) => {
 };
 var nyanReporter = (deps) => {
   const styles = createConsoleStyles(deps.color);
+  const renderCoverage2 = renderCoverageReport({
+    mode: deps.coverageReport,
+    styles,
+    thresholdPct: deps.thresholdPct
+  });
   const width = Math.floor(deps.columns * 0.75);
   const trajectoryWidthMax = Math.max(width - NYAN_CAT_WIDTH, 1);
   const appendRainbow = (trajectories, colorIndex, tick) => {
@@ -1168,11 +1448,13 @@ ${hideCursor()}${renderScoreboard(state.tally)}`
 ${state.failures.join(`
 `)}
 ` : "";
-        const coverageDump = state.coverageLines.length > 0 ? `
-${state.coverageLines.join(`
+        const renderedCoverage = renderCoverage2(state.coverageLines);
+        const coverageDump = renderedCoverage.length > 0 ? `
+${renderedCoverage.join(`
 `)}
 ` : "";
-        const gateFailureDump = state.gateFailureLines.length > 0 ? `${state.gateFailureLines.join(`
+        const gateFailureDump = state.gateFailureLines.length > 0 ? `
+${state.gateFailureLines.join(`
 `)}
 ` : "";
         return {
@@ -1188,6 +1470,11 @@ ${summaryLine(event.totals)}${coverageDump}${gateFailureDump}`
 };
 
 // src/reporters/tap-reporter.ts
+var renderTapCoverage = renderCoverageReport({
+  mode: "full",
+  styles: createConsoleStyles(false),
+  thresholdPct: undefined
+});
 var escapeDescription = (name) => name.replace(/\\/g, "\\\\").replace(/#/g, "\\#").replace(/\r?\n/g, " ");
 var escapeYamlString = (value) => value.replace(/\\/g, "\\\\").replace(/"/g, "\\\"");
 var firstErrorMessage = (diagnostics, fallback) => {
@@ -1280,6 +1567,11 @@ var tapReporter = {
 `
       };
     }
+    if (event.type === "passthrough" && event.kind === "coverage") {
+      const lines = renderTapCoverage(event.lines);
+      return lines.length > 0 ? { state, output: `${commentLines(lines)}
+` } : { state, output: "" };
+    }
     if (event.type === "passthrough") {
       return event.lines.length > 0 ? { state, output: `${commentLines(event.lines)}
 ` } : { state, output: "" };
@@ -1338,6 +1630,11 @@ Options:
   --agent       minimal output, verbose only on failure
   --coverage-threshold=<n>  fail with exit 3 when a file is below <n> (0-1 or 0-100);
                             defaults to [test].coverageThreshold in ./bunfig.toml
+  --coverage-report=<mode>  how coverage is rendered: full, failures, summary,
+                            bar, or markdown; per-reporter default when absent
+                            (tap: full, agent: summary, markdown: markdown,
+                            nyan: bar, block: bar); the tap reporter
+                            always reports coverage in full
   --color       force colour on
   --no-color    force colour off
   --help        print this help and exit
@@ -1382,14 +1679,16 @@ ${HELP}`);
 `);
     return 0;
   }
-  const reporter = selectReporter({
-    columns: deps.columns,
-    isTty: deps.isTty,
-    color: resolveColor(options.data.colorMode, deps)
-  })(options.data);
   const threshold = resolveThreshold(deps, options.data.coverageThresholdPct);
   if (threshold.warning !== undefined)
     deps.writeError(threshold.warning);
+  const reporter = selectReporter({
+    columns: deps.columns,
+    isTty: deps.isTty,
+    color: resolveColor(options.data.colorMode, deps),
+    coverageReport: options.data.coverageReport,
+    thresholdPct: threshold.thresholdPct
+  })(options.data);
   const gate = evaluateCoverageGate(threshold.thresholdPct);
   const peeked = await peekFirstNonEmptyLine(deps.input);
   const mode = peeked.firstLine === undefined ? "text" : detectInputMode(peeked.firstLine);

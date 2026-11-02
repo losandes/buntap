@@ -9,6 +9,7 @@ export type TConsoleStyles = Readonly<{
     bgYellow: (input: string) => string;
     bgCyan: (input: string) => string;
     bgMagenta: (input: string) => string;
+    dim: (input: string) => string;
     ansi256: (code: number, input: string) => string;
 }>;
 /** Colour on or off per `TReporterDeps.color` (§1.4.8); the TAP reporter never calls this with `true`. */

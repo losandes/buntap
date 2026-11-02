@@ -9,4 +9,4 @@ export type TAgentState = Readonly<{
  * tally, because bun's counts already distinguish a counted `fail` from a
  * counted `error` in ways a per-event fold would have to reconstruct.
  */
-export declare const agentReporter: (_deps: TReporterDeps) => TReporter<TAgentState>;
+export declare const agentReporter: (deps: TReporterDeps) => TReporter<TAgentState>;

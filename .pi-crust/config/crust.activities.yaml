@@ -385,5 +385,5 @@ terminal:
       - read
     delivery:
       remote: origin
-      base: main
+      base: latest
       draft: false

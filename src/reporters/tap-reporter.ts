@@ -1,6 +1,18 @@
+import { createConsoleStyles } from '../lib/console-styles.js'
 import { formatCoverageGateFailure } from '../lib/format-coverage-gate.js'
+import { renderCoverageReport } from '../lib/format-coverage-report.js'
 import type { TReporter } from '../typedefs/reporter.js'
 import type { TRunEvent } from '../typedefs/run-events.js'
+
+// §1.1.4/§1.5.3: the tap reporter is pinned to `full`, with colour always
+// off, so other programs consuming its output see bun's table unchanged -
+// `tapReporter` is a plain object rather than a function of `TReporterDeps`
+// because nothing it renders varies by them.
+const renderTapCoverage = renderCoverageReport({
+  mode: 'full',
+  styles: createConsoleStyles(false),
+  thresholdPct: undefined,
+})
 
 export type TTapState = Readonly<{ lineCount: number; versionEmitted: boolean }>
 
@@ -118,6 +130,12 @@ export const tapReporter: TReporter<TTapState> = {
         state: { ...state, lineCount: n },
         output: `${unhandledErrorLine(event, n)}\n`,
       }
+    }
+    if (event.type === 'passthrough' && event.kind === 'coverage') {
+      const lines = renderTapCoverage(event.lines)
+      return lines.length > 0
+        ? { state, output: `${commentLines(lines)}\n` }
+        : { state, output: '' }
     }
     if (event.type === 'passthrough') {
       return event.lines.length > 0

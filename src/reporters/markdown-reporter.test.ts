@@ -3,7 +3,13 @@ import type { TReporterDeps } from '../typedefs/reporter.js'
 import type { TRunEvent } from '../typedefs/run-events.js'
 import { markdownReporter } from './markdown-reporter.js'
 
-const deps: TReporterDeps = { columns: 80, isTty: false, color: false }
+const deps: TReporterDeps = {
+  columns: 80,
+  isTty: false,
+  color: false,
+  coverageReport: 'full',
+  thresholdPct: undefined,
+}
 
 const fold = (events: readonly TRunEvent[]): string => {
   const reporter = markdownReporter(deps)
@@ -242,7 +248,7 @@ test(
     expect(coverageIndex).toBeGreaterThan(errorsIndex)
     expect(totalsIndex).toBeGreaterThan(coverageIndex)
     expect(output).toContain(
-      '```text\nFile | % Funcs | % Lines\nAll files | 62.50 | 100.00\n src/add.ts | 25.00 | 100.00\n```',
+      'File | % Funcs | % Lines\nAll files | 62.50 | 100.00\n src/add.ts | 25.00 | 100.00',
     )
   },
 )
@@ -264,7 +270,9 @@ test(
     const gateEvent: TRunEvent = {
       type: 'coverage-gate-failed',
       thresholdPct: { functionsPct: 95, linesPct: 95 },
-      failing: [{ file: 'src/add.ts', functionsPct: 25, linesPct: 100 }],
+      failing: [
+        { file: 'src/add.ts', functionsPct: 25, linesPct: 100, uncovered: [] },
+      ],
     }
 
     // when
@@ -307,5 +315,74 @@ test(
     expect(
       lines.some((line, i) => line === '## Totals' && lines[i - 1] === ''),
     ).toBe(true)
+  },
+)
+
+const coverageFixture: readonly string[] = [
+  '------------|---------|---------|-------------------',
+  'File        | % Funcs | % Lines | Uncovered Line #s',
+  '------------|---------|---------|-------------------',
+  'All files   |   62.50 |   90.00 |',
+  ' src/add.ts |   25.00 |   90.00 | 4-7',
+  '------------|---------|---------|-------------------',
+]
+
+test(
+  [
+    "given a coverage passthrough event, in the markdown reporter's default markdown mode",
+    'when the reporter ends',
+    "it should print the headline and worst-first table, with bun's table folded",
+  ].join(', '),
+  () => {
+    // given
+    const reporter = markdownReporter({
+      ...deps,
+      coverageReport: 'markdown',
+      thresholdPct: { functionsPct: 95, linesPct: 95 },
+    })
+    const event: TRunEvent = {
+      type: 'passthrough',
+      kind: 'coverage',
+      lines: coverageFixture,
+    }
+    const afterCoverage = reporter.next(reporter.initial, event)
+
+    // when
+    const output = reporter.end(afterCoverage.state)
+
+    // then
+    expect(afterCoverage.output).toBe('')
+    expect(output).toContain('**Coverage: 1 of 1 files below 95%**')
+    expect(output).toContain('<details><summary>Full coverage table</summary>')
+  },
+)
+
+test(
+  [
+    'given a coverage passthrough event and an overridden --coverage-report=summary',
+    'when the reporter ends',
+    'it should print the summary line instead of the default markdown mode',
+  ].join(', '),
+  () => {
+    // given
+    const reporter = markdownReporter({
+      ...deps,
+      coverageReport: 'summary',
+      thresholdPct: { functionsPct: 95, linesPct: 95 },
+    })
+    const event: TRunEvent = {
+      type: 'passthrough',
+      kind: 'coverage',
+      lines: coverageFixture,
+    }
+    const afterCoverage = reporter.next(reporter.initial, event)
+
+    // when
+    const output = reporter.end(afterCoverage.state)
+
+    // then
+    expect(output).toContain(
+      'coverage  lines 90.00%  funcs 62.50%  ·  1 files  ·  1 below 95%',
+    )
   },
 )

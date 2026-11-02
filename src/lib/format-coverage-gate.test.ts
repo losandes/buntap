@@ -13,7 +13,9 @@ test(
     const event: TCoverageGateFailedEvent = {
       type: 'coverage-gate-failed',
       thresholdPct: { functionsPct: 95, linesPct: 95 },
-      failing: [{ file: 'src/add.ts', functionsPct: 25, linesPct: 100 }],
+      failing: [
+        { file: 'src/add.ts', functionsPct: 25, linesPct: 100, uncovered: [] },
+      ],
     }
 
     // when
@@ -39,8 +41,8 @@ test(
       type: 'coverage-gate-failed',
       thresholdPct: { functionsPct: 95, linesPct: 95 },
       failing: [
-        { file: 'src/add.ts', functionsPct: 25, linesPct: 100 },
-        { file: 'src/sub.ts', functionsPct: 50, linesPct: 60 },
+        { file: 'src/add.ts', functionsPct: 25, linesPct: 100, uncovered: [] },
+        { file: 'src/sub.ts', functionsPct: 50, linesPct: 60, uncovered: [] },
       ],
     }
 
@@ -67,7 +69,9 @@ test(
     const event: TCoverageGateFailedEvent = {
       type: 'coverage-gate-failed',
       thresholdPct: { functionsPct: 100, linesPct: 100 },
-      failing: [{ file: 'src/add.ts', functionsPct: 0, linesPct: 100 }],
+      failing: [
+        { file: 'src/add.ts', functionsPct: 0, linesPct: 100, uncovered: [] },
+      ],
     }
 
     // when
