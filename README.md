@@ -1,58 +1,50 @@
 # buntap
 
-A zero-dependency Node.js CLI that reads `bun test`'s console output on stdin and re-emits it through a TAP14, nyan, markdown, block, or agent reporter. It parses bun's default console reporter only — not `--reporter=junit`, `--dots`, or `--only-failures` — and it derives its own exit code from the parsed results, because a pipe discards bun's.
+Two zero-dependency Node.js commands. `buntap` reads `bun test`'s output on stdin and re-emits it through a TAP14, nyan, markdown, block, or agent reporter. `bunt` runs `bun test` for you and feeds `buntap` a JSON protocol instead of raw text, so bun's own exit code and signal survive the pipe. Only bun's default console reporter is parsed, not `--reporter=junit` or `--dots`.
 
 ## Install
 
-```bash
-npm install -g buntap
-```
-
-## The one thing to get right: `2>&1`
-
-bun writes its test results to **stderr**, not stdout. `bun test | buntap` therefore sees nothing but the startup banner on stdin, and `buntap` cannot report results it was never given. The canonical invocation redirects stderr into the pipe:
+buntap is not published to npm yet. Install it from GitHub, which resolves to the default branch, `latest`:
 
 ```bash
-bun test 2>&1 | buntap
+bun add -g github:losandes/buntap   # globally
+bun add -d github:losandes/buntap   # or as a dev dependency of one project
 ```
 
-If you forget the redirect, `buntap` does not fail silently: it emits a valid, empty TAP14 document, writes a hint to stderr, and exits `2`. If you run this often, a shell function saves the four characters:
+npm works too, but npm 12 refuses git dependencies unless you opt in:
 
 ```bash
-buntest() { bun test 2>&1 | buntap "$@"; }
+npm install -g --allow-git=all github:losandes/buntap   # on npm 11 and earlier, drop the flag
 ```
+
+Either installs both executables, `buntap` and `bunt`, from the committed `dist/`. Nothing builds on install, so an install is exactly as current as the last `dist/` the maintainer committed.
 
 ## Usage
 
-```bash
-bun test 2>&1 | buntap             # TAP14 (default)
-bun test 2>&1 | buntap --nyan      # nyan cat
-bun test 2>&1 | buntap --markdown  # markdown report
-bun test 2>&1 | buntap --block     # inverse-video block report
-bun test 2>&1 | buntap --agent     # minimal output, verbose only on failure
-```
-
-## `bunt`: carrying bun's exit code through the pipe
-
-`bun test 2>&1 | buntap` loses bun's own exit code to the pipe: a shell reports only the last command's status, so a compile error, a missing test file, or bun being killed by a signal is indistinguishable from an empty run. `bunt` closes that gap. It runs `bun test` for you and sends `buntap` a newline-delimited JSON protocol on stdout instead of raw text, carrying bun's own exit code and signal alongside everything `buntap` already parses.
+`bunt` is the invocation to reach for: it runs `bun test` itself.
 
 ```bash
-bunt src/lib --coverage | buntap --nyan
+bunt | buntap                     # TAP14 (default)
+bunt | buntap --nyan              # nyan cat
+bunt | buntap --markdown          # markdown report
+bunt | buntap --block             # inverse-video block report
+bunt --coverage | buntap --agent  # minimal output, verbose only on failure
+bunt src/lib --coverage | buntap  # arguments go straight to `bun test`
 ```
 
-`bunt` takes no flags of its own. Every argument is passed straight through to `bun test`, including `--help` and `--version` — there is no `bunt --help` separate from bun's own.
+Piping bun yourself is also fully supported, and every reporter renders identically either way:
 
-`buntap` decides which input it received by looking at the first non-empty line on stdin: a line that parses as the protocol's JSON selects **protocol mode**; anything else — bun's own banner, for instance — selects the **text mode** described above. Both modes render identically through every reporter, and `bun test 2>&1 | buntap` remains fully supported.
-
-In protocol mode, `buntap` prints exactly one verdict line to stderr before it exits, naming the reason and the resolved code:
-
-```text
-buntap: 2 tests failed - exiting 1
+```bash
+bun test 2>&1 | buntap --nyan
 ```
 
-That line never goes to stdout, so `--markdown` and `--agent` output stays machine-consumable when redirected to a file.
+**However**, loses bun's own exit code to the pipe: a shell reports only the last command's status, so a compile error, a missing test file, or bun being killed by a signal is indistinguishable from an empty run. That's why `bunt` exists: to normalize the test runner output into a document protocol.
 
-### Exit-code precedence (protocol mode only)
+## `bunt` takes no args or flags
+
+`bunt` takes no flags of its own: every argument is appended to `bun test` verbatim and in order, and none of them are inspected. There is consequently no `bunt --help` or `bunt --version`; `bun test` ignores both of those flags, so `bunt --version` simply runs your suite.
+
+## Exit-code precedence (protocol mode only)
 
 Resolved top to bottom; the first matching row wins.
 
@@ -65,7 +57,7 @@ Resolved top to bottom; the first matching row wins.
 | No `runner-exit` line arrived               | `2`                   | `buntap: the runner stopped without reporting its exit code - exiting 2` |
 | Otherwise                                   | `0`                   | `buntap: 247 tests passed - exiting 0`                                   |
 
-Do not add `set -o pipefail` to this pipeline. `bunt` deliberately exits with bun's own exit code — so it behaves like `bun test` when run alone — and with `pipefail` the shell reports that code instead of the resolved one above, which defeats the reason this protocol exists.
+Do not add `set -o pipefail` to this pipeline. `bunt` deliberately exits with bun's own exit code so it behaves like `bun test` when run alone. With `pipefail` the shell reports that code instead of the resolved one above, which defeats the reason this protocol exists.
 
 ## Coverage
 
@@ -96,7 +88,7 @@ Conforms to the [TAP version 14 specification](https://testanything.org/tap-vers
 
 ### `--nyan`
 
-A four-line scoreboard, a rainbow trajectory, and a cat whose face tracks the run: `( ^ .^)` while everything passes, `( o .o)` once something is skipped, `( x .x)` once something fails. Ported from [Supposed](https://github.com/concordances/supposed)'s `NyanReporter`.
+A four-line scoreboard, a rainbow trajectory, and a cat whose face tracks the run: `( ^ .^)` while everything passes, `( o .o)` once something is skipped, `( x .x)` once something fails. Ported from [Supposed](https://github.com/concordances/supposed)'s `NyanReporter` (original credit goes to [mocha](https://mochajs.org/), I think).
 
 ### `--markdown`
 
@@ -131,7 +123,7 @@ One line per test, prefixed with an inverse-video badge: ` PASS ` on green, ` FA
 
 ### `--agent`
 
-Nothing for a passing test. For a failure: the file, the full test name, and the complete captured diagnostics. One summary line at the end — on an all-passing run, that line is the entire output. Built for feeding an AI coding agent only what it needs to fix a test, not a transcript of everything that already worked.
+Nothing for a passing test. For a failure: the file, the full test name, and the complete captured diagnostics. One summary line at the end. On an all-passing run, that line is the entire output. Built for feeding an AI coding agent only what it needs to fix a test, not a transcript of everything that already worked.
 
 ## Flags
 
@@ -158,17 +150,25 @@ Giving two reporter flags together, or any flag not listed above, is an error: `
 | `2`  | a usage error, or no bun test summary was found on stdin              |
 | `3`  | every test passed but at least one file is below the coverage minimum |
 
-bun's own exit code never reaches `buntap` — it is the last command in the pipe, so the shell only sees its status. `buntap` reconstructs pass/fail from the parsed summary instead.
+Those four are the whole range in text mode, where bun's own exit code never reaches `buntap`: bun is not the last command in the pipe, so the shell discards its status and `buntap` reconstructs pass/fail from the parsed summary. In protocol mode, `bunt` hands that code over and the precedence table above applies, which is the only way to get `128 + signal` or a passthrough of bun's own nonzero code.
 
 ## Development
 
 ```bash
 bun install
-bun test             # run the suite
-bun test --coverage  # the suite plus the 95% coverage gate
-bun run check         # Biome
-bun run typecheck     # tsc --noEmit
-bun run build         # emit dist/
+bun run test           # the suite, through bunt and the nyan reporter
+bun run test:tap       # the same suite through TAP14
+bun run test:block     # ... the block reporter
+bun run test:markdown  # ... the markdown reporter
+bun run test:agent     # ... with --coverage and the 95% gate
+bun run test:dist      # the suite through the built dist/ binaries
+bun run lint           # Biome (lint:fix to apply)
+bun run typecheck      # tsc --noEmit
+bun run build          # emit dist/
 ```
 
-Source lives entirely under `src/`; `dist/` is generated and gitignored. Reporters are pure functions from `(state, event)` to `(state, output)`, so every one of them is tested by calling it with object literals — no process spawning, no console capture.
+The repository dogfoods: every `test*` script pipes `bun src/bunt.ts` into `bun src/bin.ts`, so a change to a reporter shows up in the output of the run that tests it. Plain `bun test` still works and prints bun's own output.
+
+Source lives entirely under `src/`. `dist/` is generated but **committed**, because a GitHub install runs no build and the `bunt` and `buntap` bins would otherwise not exist. Rebuild and commit it in the same change that moves `src/`; `bun run test:ci` builds and then runs the suite through `dist/`, which is the check that it is current.
+
+Reporters are pure functions from `(state, event)` to `(state, output)`, so every one of them is tested by calling it with object literals... no process spawning, no console capture.
