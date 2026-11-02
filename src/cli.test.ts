@@ -5,6 +5,12 @@ import {
   lowCoverageFixture,
   mixedResultsFixture,
 } from './parse/bun-output.fixture.js'
+import { parseRun } from './parse/parse-run.js'
+import {
+  encodeRunEvent,
+  encodeRunnerExit,
+  encodeRunnerStart,
+} from './protocol/encode-protocol-line.js'
 
 // A plain object, not an async generator: there is no await in the body, and
 // wrapping each value of a synchronous iterator in Promise.resolve satisfies
@@ -16,6 +22,23 @@ const linesOf = (text: string): AsyncIterable<string> => ({
     return { next: () => Promise.resolve(iterator.next()) }
   },
 })
+
+/**
+ * Builds a realistic protocol stream by running the real parser over a
+ * text fixture and re-encoding its own output \u2014 exactly what `bunt`
+ * does \u00a71.1.5, rather than hand-writing JSONL that might not match the
+ * shape the parser actually produces.
+ */
+const toProtocolInput = async (
+  text: string,
+  exit: Readonly<{ code: number | null; signal: string | null }>,
+): Promise<string> => {
+  let lines: readonly string[] = [encodeRunnerStart([])]
+  for await (const event of parseRun(linesOf(text))) {
+    lines = [...lines, encodeRunEvent(event)]
+  }
+  return [...lines, encodeRunnerExit(exit.code, exit.signal)].join('')
+}
 
 const makeDeps = (
   input: string,
@@ -464,5 +487,137 @@ test(
     // being reported — not a coverage gate that had nothing to gate
     expect(stdout()).not.toContain('COVERAGE FAIL')
     expect(code).toBe(1)
+  },
+)
+
+test(
+  [
+    'given a protocol stream built from the mixed results fixture',
+    'when run with no flags',
+    'it should render identically to text mode and exit 1 for the failures',
+  ].join(', '),
+  async () => {
+    // given
+    const protocolInput = await toProtocolInput(mixedResultsFixture, {
+      code: 1,
+      signal: null,
+    })
+    const { deps, stdout } = makeDeps(protocolInput)
+
+    // when
+    const code = await main(deps)([])
+
+    // then
+    expect(stdout().split('\n')[0]).toBe('TAP version 14')
+    expect(stdout()).toContain('not ok')
+    expect(code).toBe(1)
+  },
+)
+
+test(
+  [
+    'given a protocol stream for a clean run and a zero runner exit',
+    'when run',
+    'it should exit 0 and print a passing verdict line to stderr',
+  ].join(', '),
+  async () => {
+    // given
+    const cleanFixture = [
+      'bun test v1.3.14 (0d9b296a)',
+      '',
+      'src/a.test.ts:',
+      '(pass) it works [0.01ms]',
+      '',
+      ' 1 pass',
+      ' 0 fail',
+      ' 1 expect() calls',
+      'Ran 1 tests across 1 files. [1ms]',
+      '',
+    ].join('\n')
+    const protocolInput = await toProtocolInput(cleanFixture, {
+      code: 0,
+      signal: null,
+    })
+    const { deps, stdout, stderr } = makeDeps(protocolInput)
+
+    // when
+    const code = await main(deps)([])
+
+    // then
+    expect(code).toBe(0)
+    expect(stderr()).toBe('buntap: 1 test passed - exiting 0\n')
+    expect(stdout()).not.toContain('buntap:')
+  },
+)
+
+test(
+  [
+    'given a protocol stream and the markdown reporter',
+    'when run',
+    'it should keep the verdict line off stdout entirely',
+  ].join(', '),
+  async () => {
+    // given
+    const protocolInput = await toProtocolInput(mixedResultsFixture, {
+      code: 1,
+      signal: null,
+    })
+    const { deps, stdout, stderr } = makeDeps(protocolInput)
+
+    // when
+    await main(deps)(['--markdown'])
+
+    // then
+    expect(stdout()).not.toContain('buntap:')
+    expect(stderr()).toContain('buntap: ')
+  },
+)
+
+test(
+  [
+    'given a protocol stream with one line that fails to decode',
+    'when run',
+    'it should ignore it rather than throw, and still render the rest',
+  ].join(', '),
+  async () => {
+    // given
+    const protocolInput = await toProtocolInput(mixedResultsFixture, {
+      code: 1,
+      signal: null,
+    })
+    const corrupted = `${protocolInput}not valid json\n`
+    const { deps, stdout } = makeDeps(corrupted)
+
+    // when
+    const code = await main(deps)([])
+
+    // then
+    expect(stdout()).toContain('not ok')
+    expect(code).toBe(1)
+  },
+)
+
+test(
+  [
+    'given a protocol stream truncated before a runner-exit line arrives',
+    'when run',
+    'it should exit 2 and name the truncation on stderr',
+  ].join(', '),
+  async () => {
+    // given
+    let lines: readonly string[] = [encodeRunnerStart([])]
+    for await (const event of parseRun(linesOf(coverageFixture))) {
+      lines = [...lines, encodeRunEvent(event)]
+    }
+    const { deps, stderr } = makeDeps(lines.join(''))
+
+    // when
+    const code = await main(deps)([])
+
+    // then
+    expect(code).toBe(2)
+    expect(stderr()).toBe(
+      'buntap: the runner stopped without reporting its exit code - exiting 2\n',
+    )
   },
 )

@@ -1,97 +1,18 @@
-# Every Lifecycle this repository offers.
+
+# Lifecycle definitions. Activities are defined in crust.activities.yaml.
 #
-# A Lifecycle is the progression of an objective. It holds Stages; a Stage
-# holds Activities. Activities themselves are registered in
-# crust.activities.yaml — named here, defined there, so the same Activity
-# appears in as many Lifecycles as you like.
+# Stages execute in order. Within each Stage, strategy determines execution:
+#   serial      sequential, in listed order (default)
+#   concurrent  parallel, with no dependencies or overlapping write permissions
 #
-# Stages run in the order they are declared. A Stage says how its own
-# Activities run, and a serial Stage is a SEQUENCE — which is why `deliver`
-# holds five Activities rather than being split into five Stages. Grouping is
-# not how independence is expressed; `strategy` is.
+# Concurrent Activities share a working tree. Overlapping `writes` are
+# rejected at load. Review Activities can run concurrently because each
+# reads the completed changes and writes to a separate findings file.
 #
-#
-#   strategy: serial      one after another, in the order listed (the default)
-#   strategy: concurrent  all at once, because they do not depend on each other
-#
-# `concurrent` is a claim, not a grouping. It says these Activities can run
-# against the same working tree at the same time without reading each other's
-# half-finished work, and it is enforced: a concurrent Stage whose Activities
-# declare overlapping `writes` is refused at load.
-#
-# Which is why `accept` is the only concurrent Stage here. A reviewer and a
-# code-reviewer both read the finished diff and both write only their own
-# findings file, so neither can see the other's work in progress. Everything
-# else in these chains needs what came before it.
-#
-# Personal deviations go in crust.lifecycles.local.yaml, which is gitignored.
+# Local overrides: crust.lifecycles.local.yaml (gitignored).
+# Example: <pi-crust>/cookbooks/examples/crust.lifecycles.local.example.yaml
 
 lifecycles:
-  - name: sdlc
-    description: >-
-      The whole lifecycle, identify through code-review with test-driven
-      development: success criteria written before the build.
-    stages:
-      - name: discover
-        strategy: serial
-        activities: [identify, conceptualize]
-      - name: deliver
-        strategy: serial
-        activities: [plan, design, build, test]
-      - name: accept
-        strategy: concurrent
-        activities: [outcome-review, code-review]
-      - name: push
-        strategy: serial
-        activities: [gh-pull-request]
-
-  - name: analyze
-    description: >-
-      The product lifecycle for evaluating a bug and planning the fix.
-    stages:
-      - name: discover
-        strategy: concurrent
-        activities: [identify, diagnose]
-      - name: plan
-        strategy: serial
-        activities: [plan]
-
-  - name: discover
-    description: >-
-      The product lifecycle: identify, conceptualize, plan.
-    stages:
-      - name: discover
-        strategy: serial
-        activities: [identify, conceptualize, plan]
-
-  - name: deliver
-    description: >-
-      The engineering lifecycle: test-first, build, and review.
-    stages:
-      - name: deliver
-        strategy: serial
-        activities: [build, test]
-      - name: accept
-        strategy: concurrent
-        activities: [outcome-review, code-review]
-      - name: push
-        strategy: serial
-        activities: [gh-pull-request]
-
-  - name: ship
-    description: >-
-      The engineering lifecycle: plan, build, and review.
-    stages:
-      - name: ship
-        strategy: serial
-        activities: [identify, plan, build]
-      - name: accept
-        strategy: concurrent
-        activities: [outcome-review, code-review]
-      - name: push
-        strategy: serial
-        activities: [gh-pull-request]
-
   - name: bugfix
     description: >-
       Fix a reported bug, start to finish. Reproduction comes first and gates the
@@ -121,20 +42,50 @@ lifecycles:
       - name: prove
         strategy: serial
         activities: [plan, build]
+
+  - name: deliver
+    description: >-
+      The engineering lifecycle: build, test, and review.
+    stages:
+      - name: deliver
+        strategy: serial
+        activities: [build, test]
+      - name: accept
+        strategy: concurrent
+        activities: [outcome-review, code-review]
       - name: push
         strategy: serial
         activities: [gh-pull-request]
 
-  # Named `gh-triage`, not `triage`: the latter is already the name of both
-  # a Planner and its `just crust triage` recipe, and
-  # `modules/use-cases/recipes.test.ts` refuses any Lifecycle whose name a
-  # recipe already owns -- a real collision, not merely the cosmetic one
-  # `just crust list` shows between a Lifecycle and a Planner section.
-  - name: gh-triage
+  - name: discover
     description: >-
-      Analyze a topic, plan the work, and open a github issue. Not the triage
-      PLANNER, which recommends a chain and stops.
+      The product lifecycle: identify, conceptualize, plan.
+    stages:
+      - name: discover
+        strategy: serial
+        activities: [identify, conceptualize, plan]
+
+  - name: gh-issue
+    description: >-
+      Analyze a topic, plan the work, and open a github issue.
     stages:
       - name: discover
         strategy: serial
         activities: [identify, plan, gh-issue]
+
+  - name: ship
+    description: >-
+      The engineering lifecycle: plan, build, and review.
+    stages:
+      - name: discover
+        strategy: serial
+        activities: [identify, plan]
+      - name: deliver
+        strategy: serial
+        activities: [build, test]
+      - name: accept
+        strategy: concurrent
+        activities: [outcome-review, code-review]
+      - name: push
+        strategy: serial
+        activities: [gh-pull-request]

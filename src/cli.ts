@@ -1,13 +1,22 @@
 import { parseBunfigThreshold } from './parse/parse-bunfig-threshold.js'
 import { parseRun } from './parse/parse-run.js'
+import { peekFirstNonEmptyLine } from './parse/peek-first-line.js'
+import { decodeProtocolLine } from './protocol/decode-protocol-line.js'
 import type { TCoverageThresholdPct } from './typedefs/coverage.js'
+import { detectInputMode } from './use-cases/detect-input-mode.js'
 import { evaluateCoverageGate } from './use-cases/evaluate-coverage-gate.js'
 import { parseCliOptions } from './use-cases/parse-cli-options.js'
+import { renderVerdictLine } from './use-cases/render-verdict-line.js'
 import {
   initialExitState,
   nextExitState,
   resolveExitCode,
 } from './use-cases/resolve-exit-code.js'
+import {
+  initialProtocolExitState,
+  nextProtocolExitState,
+  resolveProtocolVerdict,
+} from './use-cases/resolve-protocol-exit-code.js'
 import { selectReporter } from './use-cases/select-reporter.js'
 
 export type TCliDeps = Readonly<{
@@ -110,10 +119,47 @@ export const main =
     if (threshold.warning !== undefined) deps.writeError(threshold.warning)
     const gate = evaluateCoverageGate(threshold.thresholdPct)
 
+    // §1.3.1-1.3.2: decide protocol vs. text from the first non-empty line,
+    // without consuming it — `rest` replays everything the search read.
+    const peeked = await peekFirstNonEmptyLine(deps.input)
+    const mode =
+      peeked.firstLine === undefined
+        ? 'text'
+        : detectInputMode(peeked.firstLine)
+
+    if (mode === 'protocol') {
+      // The one permitted accumulator in this module: a stream fold cannot
+      // be expressed as a reduce because events arrive over time.
+      let protocolState = initialProtocolExitState
+      for await (const line of peeked.rest) {
+        const decoded = decodeProtocolLine(line)
+        if (decoded.status === 'error') continue // §1.3.4: ignore, never throw
+
+        const event = decoded.data
+        if (event.type === 'runner-start') continue
+        if (event.type === 'runner-exit') {
+          protocolState = nextProtocolExitState(protocolState, event)
+          continue
+        }
+
+        // §1.3.3: the same reporter, coverage-gate, and exit-state pipeline
+        // text mode drives below, fed from decoded events instead.
+        for (const gated of gate(event)) {
+          deps.write(reporter.next(gated))
+          protocolState = nextProtocolExitState(protocolState, gated)
+        }
+      }
+      deps.write(reporter.end())
+
+      const verdict = resolveProtocolVerdict(protocolState)
+      deps.writeError(renderVerdictLine(verdict)) // §1.3.5-1.3.6: stderr only
+      return verdict.code
+    }
+
     // The one permitted accumulator in this module: a stream fold cannot be
     // expressed as a reduce because events arrive over time.
     let exitState = initialExitState
-    for await (const event of parseRun(deps.input)) {
+    for await (const event of parseRun(peeked.rest)) {
       for (const gated of gate(event)) {
         deps.write(reporter.next(gated))
         exitState = nextExitState(exitState, gated)

@@ -1,114 +1,63 @@
-# crust.config.yaml — the factory's agent roster. One agent, one prompt, one purpose.
-# v1 runs the Pi coding agent only; coding_agent: claude_code arrives in v2.
+
+# Agent configuration. One agent, one prompt, one purpose.
+# v1 supports Pi only; Claude Code support is planned for v2.
 defaults:
   coding_agent: pi
-  # The model every agent gets unless its own entry overrides it. Replace it
-  # with one your credentials actually reach: `pi --list-models` is the
-  # authority, and config validation refuses a model that is not there rather
-  # than failing later inside an agent.
-  model: anthropic/claude-sonnet-5 # provider/id — a bare pattern is ambiguous across providers
+  # Default model. Must be available in `pi --list-models`.
+  model: anthropic/claude-sonnet-5 # provider/id
   thinking: medium                 # off | minimal | low | medium | high | xhigh | max
-  harness_engineering: []          # pi extensions loaded into the harness (-e)
-  # Roster-wide allowlist; any agent may override with its own list.
-  # NOTE: --tools filters extension and custom tools too, not just builtins. An agent
-  # whose harness_engineering extension registers a tool MUST name that tool in its own
-  # tools list — otherwise the extension loads and its tool is silently filtered out.
+  harness_engineering: []          # Pi extensions loaded with -e
+  data_dir: "{primary_worktree}/.pi-crust/data"
+
+  # Default tool allowlist. Agents may override it.
+  # Extension tools must also be listed explicitly to be available.
   tools:
-    - bash                         # execute bash commands
-    - edit                         # find/replace edits
-    - read                         # read file contents
+    - bash                         # execute commands
+    - edit                         # find/replace
+    - read                         # read files
     - write                        # create/overwrite files
-  # Off-limits to every agent that does not name them in its own `writes`.
-  # `tools` alone cannot protect these: bash runs `git checkout`, and write
-  # reaches any path. An agent must not be able to edit the machinery that
-  # decides whether its own work passed. Enforced by the runtime, which
-  # lives in the pi-crust package and is not reachable from this repository
-  # at all — which is why only config/ needs naming here now.
-  #
-  # `writes:` per agent says what it may change IN THE REPO, and where its own
-  # document goes — `{handoff}/review.md`. It is required: omitting it used to
-  # mean "anywhere", so the widest permission was the one granted by silence.
-  # `['*']` is how you say anywhere now. It never restricts the session runtime
-  # under data_dir — envelopes, prompts, raw output — so an agent can always
-  # record its own work.
-  # `*` does not cross `/` and `**` does, so an env file needs BOTH forms:
-  # `.env*` catches `.env`, `.env.production`, `.envrc` and `.envrc.local` at
-  # the root, and `**/.env*` catches the same names in every directory below
-  # it. An env file turns up wherever a service lives, not only at the top.
+
+  # Protected paths cannot be accessed without an agent-specific override.
+  # Each agent must declare `writes` for repository changes.
+  # `['*']` permits all paths; omission does not.
+  # Session data under data_dir is exempt from write restrictions.
+  # Globs: * matches within a directory; ** matches across directories.
   protected_files:
     - .pi-crust/config/
     - .env*
     - '**/.env*'
 
-  # What happens when a tool call reaches one of those paths, and what happens
-  # when it reaches a GITIGNORED one. Four verbs, and only four:
-  #
-  #   block   refused BEFORE the call runs. Nothing is read, nothing is
-  #           written, the agent is told why, and the refusal is reported.
-  #   stop    it happened; the run ends at that Activity, loudly.
-  #   warn    it happened; reported with every other warning; the run goes on.
-  #   allow   not governed. A path nobody wants governed should leave the list.
-  #
-  # There is no `revert`, and there will not be one. Undoing a write assumes
-  # pi-crust knows whose write it was, and a developer editing the same branch
-  # while a run works is indistinguishable from an agent in a diff. What it
-  # cannot attribute, it reports.
-  #
-  # `block` is the shipped default for a protected path because the other
-  # three describe an exposure that has already happened: for a credentials
-  # file that is no protection at all, since the bytes are already in a
-  # model's context, in its session on disk, and possibly in a provider's
-  # logs. Read and write are separate questions — for a secret, reading is the
-  # dangerous half.
+  # Access policies:
+  # block = refuse before execution
+  # stop  = execute, then terminate the Activity
+  # warn  = execute and report
+  # allow = execute without enforcement
+  # No automatic revert: changes cannot reliably be attributed to agents.
   protected:
     read: block
     write: block
 
-  # Gitignored paths, minus this run's own session runtime under data_dir.
-  # Reading a generated file is ordinary work — a build output, a lockfile, a
-  # local fixture — so blocking it would break real work for no gain. Writing
-  # one produces work that is not in the repository, so no diff, no review and
-  # no commit will ever show it. Membership is decided by git, never by a
-  # second implementation of .gitignore matching.
+  # Gitignored paths, excluding session data under data_dir.
+  # Reads are permitted with warnings; writes are blocked because
+  # ignored changes are invisible to normal Git review.
   ignored:
     read: warn
     write: block
 
-  # LIMIT, stated where the policy is declared: `bash` is best-effort only.
-  # `read`, `write` and `edit` carry a structured path and are matched
-  # exactly. A shell command is a string, and `cat .env`, `grep -r KEY .` and
-  # `env > dump` are not reliably distinguishable from legitimate work. The
-  # obvious spellings are matched and the rest are not, so if a path MUST NOT
-  # leak, do not give that Activity `bash` — a partial defence described as
-  # protection is worse than none.
-  data_dir: .pi-crust/data         # runtime home: {data_dir}/sessions/{run_id}/{agent_name}/
+  # LIMITATION: Bash enforcement is best-effort. Structured read/write/edit
+  # paths are checked precisely, but arbitrary shell commands cannot be.
+  # Do not grant bash to agents requiring strict filesystem isolation.
 
-# What this repository offers — the Activities and the Lifecycles — is in
-# crust.activities.yaml and crust.lifecycles.yaml beside this file. The order
-# they are declared in is the order menus show them, and `just crust list`
-# prints the lot.
+# Activities and lifecycles: crust.activities.yaml, crust.lifecycles.yaml
+# Observability: crust.observe.yaml
+# Declaration order determines menu order (`just crust list`).
 
-# Watching a run — the trace database, the UI's ports, and the themes it
-# offers — lives in crust.observe.yaml beside this file.
-
-# What agents LOAD and what `verify` RUNS, both selected by the paths a change
-# actually touched. This section is the ONLY place a skill path or a checker
-# command may appear: crust is stamped into other repositories, so a prompt or a
-# module that named one would be naming something that does not exist there.
-#
-# Glob semantics are the ones `writes:` uses: `*` does not cross `/`, `**` does.
-# A rule written `when: ["*.ts"]` therefore matches only the repository root and
-# silently covers nothing nested — which reads as a pass. An empty `when`
-# always matches.
+# Route skills and verification checks by changed paths.
+# Keep repository-specific skill paths and commands here, not in prompts.
+# `when` globs are relative to the Git root; * does not cross directories.
+# An empty `when` matches all paths.
 routing:
-  # Declare yours here. Empty means nothing is verified: the `checks` gate
-  # passes saying so, and `verify` prints the same and exits 0. Declaring a
-  # rule is the act of opting in.
-  #
-  # Once you HAVE declared one, a change no rule matches FAILS, because a
-  # check nobody declared cannot have passed. Those are different claims:
-  # nothing declared is a repository that has not opted in, a rule that
-  # matched nothing is one that opted in and left this change uncovered.
+  # Cross-activity routing rules for skills and checks.
   skills:
     - name: code-review
       agents: [code-reviewer]          # omit to give it to every agent
