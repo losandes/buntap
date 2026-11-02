@@ -9,6 +9,7 @@ export type TConsoleStyles = Readonly<{
   bgYellow: (input: string) => string
   bgCyan: (input: string) => string
   bgMagenta: (input: string) => string
+  dim: (input: string) => string
   ansi256: (code: number, input: string) => string
 }>
 
@@ -33,6 +34,7 @@ export const createConsoleStyles = (color: boolean): TConsoleStyles =>
         bgYellow: wrap(43, 49),
         bgCyan: wrap(46, 49),
         bgMagenta: wrap(45, 49),
+        dim: wrap(2, 22),
         ansi256: (code, input) => `\u001b[38;5;${code}m${input}\u001b[0m`,
       }
     : {
@@ -46,6 +48,7 @@ export const createConsoleStyles = (color: boolean): TConsoleStyles =>
         bgYellow: passthrough,
         bgCyan: passthrough,
         bgMagenta: passthrough,
+        dim: passthrough,
         ansi256: (_code, input) => input,
       }
 

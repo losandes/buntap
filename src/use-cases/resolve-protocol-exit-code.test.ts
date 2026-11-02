@@ -99,7 +99,9 @@ test(
     const afterGate = nextProtocolExitState(initialProtocolExitState, {
       type: 'coverage-gate-failed',
       thresholdPct: { functionsPct: 95, linesPct: 95 },
-      failing: [{ file: 'src/add.ts', functionsPct: 25, linesPct: 100 }],
+      failing: [
+        { file: 'src/add.ts', functionsPct: 25, linesPct: 100, uncovered: [] },
+      ],
     })
     const afterEnd = nextProtocolExitState(afterGate, runEndEvent({ pass: 1 }))
     const afterExit = nextProtocolExitState(afterEnd, {

@@ -22,6 +22,7 @@ test(
         reporter: 'tap',
         colorMode: 'auto',
         coverageThresholdPct: undefined,
+        coverageReport: 'full',
       },
     })
   },
@@ -47,6 +48,13 @@ for (const { flag, reporter } of reporterFlagCases) {
       const actual = parseCliOptions([flag])
 
       // then
+      const defaults = {
+        nyan: 'bar',
+        markdown: 'markdown',
+        block: 'failures',
+        agent: 'summary',
+      } as const
+
       expect(actual).toEqual({
         status: 'ok',
         data: {
@@ -54,6 +62,7 @@ for (const { flag, reporter } of reporterFlagCases) {
           reporter,
           colorMode: 'auto',
           coverageThresholdPct: undefined,
+          coverageReport: defaults[reporter],
         },
       })
     },
@@ -75,6 +84,7 @@ test(
         reporter: 'tap',
         colorMode: 'on',
         coverageThresholdPct: undefined,
+        coverageReport: 'full',
       },
     })
   },
@@ -95,6 +105,7 @@ test(
         reporter: 'tap',
         colorMode: 'off',
         coverageThresholdPct: undefined,
+        coverageReport: 'full',
       },
     })
   },
@@ -164,6 +175,7 @@ test(
         reporter: 'nyan',
         colorMode: 'auto',
         coverageThresholdPct: undefined,
+        coverageReport: 'bar',
       },
     })
   },
@@ -204,6 +216,7 @@ test(
         reporter: 'tap',
         colorMode: 'auto',
         coverageThresholdPct: { functionsPct: 95, linesPct: 95 },
+        coverageReport: 'full',
       },
     })
   },
@@ -228,6 +241,7 @@ test(
         reporter: 'tap',
         colorMode: 'auto',
         coverageThresholdPct: { functionsPct: 95, linesPct: 95 },
+        coverageReport: 'full',
       },
     })
   },
@@ -252,6 +266,7 @@ test(
         reporter: 'tap',
         colorMode: 'auto',
         coverageThresholdPct: { functionsPct: 100, linesPct: 100 },
+        coverageReport: 'full',
       },
     })
   },
@@ -295,3 +310,178 @@ test(
     })
   },
 )
+
+const coverageReportModeCases = [
+  'full',
+  'failures',
+  'summary',
+  'bar',
+  'markdown',
+] as const
+
+for (const mode of coverageReportModeCases) {
+  test(
+    [
+      `given --coverage-report=${mode} with the block reporter`,
+      'when parsed',
+      'it should resolve to that mode',
+    ].join(', '),
+    () => {
+      // given
+      // when
+      const actual = parseCliOptions([`--coverage-report=${mode}`, '--block'])
+
+      // then
+      expect(actual).toEqual({
+        status: 'ok',
+        data: {
+          mode: 'run',
+          reporter: 'block',
+          colorMode: 'auto',
+          coverageThresholdPct: undefined,
+          coverageReport: mode,
+        },
+      })
+    },
+  )
+}
+
+test(
+  [
+    'given --coverage-report=diagram',
+    'when parsed',
+    'it should return a usage error naming the invalid value',
+  ].join(', '),
+  () => {
+    // given
+    // when
+    const actual = parseCliOptions(['--coverage-report=diagram'])
+
+    // then
+    expect(actual).toEqual({
+      status: 'error',
+      error: "invalid --coverage-report value 'diagram'",
+    })
+  },
+)
+
+test(
+  [
+    'given a bare --coverage-report with no value',
+    'when parsed',
+    'it should be the usage error for an invalid, empty value',
+  ].join(', '),
+  () => {
+    // given
+    // when
+    const actual = parseCliOptions(['--coverage-report'])
+
+    // then
+    expect(actual).toEqual({
+      status: 'error',
+      error: "invalid --coverage-report value ''",
+    })
+  },
+)
+
+const reporterDefaultModeCases = [
+  { reporter: 'tap', flag: undefined, mode: 'full' },
+  { reporter: 'agent', flag: '--agent', mode: 'summary' },
+  { reporter: 'markdown', flag: '--markdown', mode: 'markdown' },
+  { reporter: 'nyan', flag: '--nyan', mode: 'bar' },
+  { reporter: 'block', flag: '--block', mode: 'failures' },
+] as const
+
+for (const { reporter, flag, mode } of reporterDefaultModeCases) {
+  test(
+    [
+      `given the ${reporter} reporter with --coverage-report absent`,
+      'when parsed',
+      `it should default coverage reporting to ${mode}`,
+    ].join(', '),
+    () => {
+      // given
+      const argv = flag === undefined ? [] : [flag]
+
+      // when
+      const actual = parseCliOptions(argv)
+
+      // then
+      expect(actual.status).toBe('ok')
+      expect(
+        actual.status === 'ok' &&
+          actual.data.mode === 'run' &&
+          actual.data.coverageReport,
+      ).toBe(mode)
+    },
+  )
+}
+
+test(
+  [
+    'given an explicit --coverage-report on a non-tap reporter',
+    'when parsed',
+    "it should override that reporter's default",
+  ].join(', '),
+  () => {
+    // given
+    // when
+    const actual = parseCliOptions(['--agent', '--coverage-report=bar'])
+
+    // then
+    expect(actual.status).toBe('ok')
+    expect(
+      actual.status === 'ok' &&
+        actual.data.mode === 'run' &&
+        actual.data.coverageReport,
+    ).toBe('bar')
+  },
+)
+
+test(
+  [
+    'given --coverage-report=full with the tap reporter',
+    'when parsed',
+    'it should be accepted',
+  ].join(', '),
+  () => {
+    // given
+    // when
+    const actual = parseCliOptions(['--coverage-report=full'])
+
+    // then
+    expect(actual).toEqual({
+      status: 'ok',
+      data: {
+        mode: 'run',
+        reporter: 'tap',
+        colorMode: 'auto',
+        coverageThresholdPct: undefined,
+        coverageReport: 'full',
+      },
+    })
+  },
+)
+
+const nonFullModesOnTap = ['failures', 'summary', 'bar', 'markdown'] as const
+
+for (const mode of nonFullModesOnTap) {
+  test(
+    [
+      `given --coverage-report=${mode} with the tap reporter`,
+      'when parsed',
+      'it should return the tap-pinned usage error',
+    ].join(', '),
+    () => {
+      // given
+      // when
+      const actual = parseCliOptions([`--coverage-report=${mode}`])
+
+      // then
+      expect(actual).toEqual({
+        status: 'error',
+        error: 'the tap reporter always reports coverage in full',
+      })
+    },
+  )
+}

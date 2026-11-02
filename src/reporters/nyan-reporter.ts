@@ -5,6 +5,7 @@ import {
   showCursor,
 } from '../lib/console-styles.js'
 import { formatCoverageGateFailure } from '../lib/format-coverage-gate.js'
+import { renderCoverageReport } from '../lib/format-coverage-report.js'
 import { formatDuration } from '../lib/format-duration.js'
 import { foldTally, initialTally, type TTally } from '../lib/tally.js'
 import type { TReporter, TReporterDeps } from '../typedefs/reporter.js'
@@ -51,6 +52,11 @@ const faceFor = (tally: TTally): string => {
 
 export const nyanReporter = (deps: TReporterDeps): TReporter<TNyanState> => {
   const styles = createConsoleStyles(deps.color)
+  const renderCoverage = renderCoverageReport({
+    mode: deps.coverageReport,
+    styles,
+    thresholdPct: deps.thresholdPct,
+  })
   const width = Math.floor(deps.columns * 0.75)
   const trajectoryWidthMax = Math.max(width - NYAN_CAT_WIDTH, 1)
 
@@ -208,9 +214,10 @@ export const nyanReporter = (deps: TReporterDeps): TReporter<TNyanState> => {
       if (event.type === 'run-end') {
         const failureDump =
           state.failures.length > 0 ? `\n${state.failures.join('\n')}\n` : ''
+        const renderedCoverage = renderCoverage(state.coverageLines)
         const coverageDump =
-          state.coverageLines.length > 0
-            ? `\n${state.coverageLines.join('\n')}\n`
+          renderedCoverage.length > 0
+            ? `\n${renderedCoverage.join('\n')}\n`
             : ''
         const gateFailureDump =
           state.gateFailureLines.length > 0

@@ -9,6 +9,7 @@
     ],
     // base
     "target": "ES2022", // Enable top-level await, and other modern ESM features.
+    "lib": ["ES2023"], // Adds Array.prototype.toSorted etc., which Biome's no-array-mutation plugin requires in place of .sort().
     "module": "ES2022",
     "moduleResolution": "bundler", // Enable node-style module resolution, for things like npm package imports.
     "allowImportingTsExtensions": false, // Allow importing TypeScript files using their native extension (.ts(x)).

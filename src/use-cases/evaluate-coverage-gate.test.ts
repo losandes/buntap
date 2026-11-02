@@ -46,7 +46,9 @@ test(
     expect(actual[1]).toEqual({
       type: 'coverage-gate-failed',
       thresholdPct,
-      failing: [{ file: 'src/add.ts', functionsPct: 25, linesPct: 100 }],
+      failing: [
+        { file: 'src/add.ts', functionsPct: 25, linesPct: 100, uncovered: [] },
+      ],
     })
   },
 )

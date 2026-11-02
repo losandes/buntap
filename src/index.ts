@@ -1,8 +1,15 @@
 export type { TCliDeps } from './cli.js'
 export { main } from './cli.js'
 export { formatCoverageGateFailure } from './lib/format-coverage-gate.js'
+export {
+  renderCoverageReport,
+  type TCoverageReportDeps,
+} from './lib/format-coverage-report.js'
 export { parseBunfigThreshold } from './parse/parse-bunfig-threshold.js'
-export { parseCoverageTable } from './parse/parse-coverage-table.js'
+export {
+  parseCoverageTable,
+  parseCoverageTotals,
+} from './parse/parse-coverage-table.js'
 export { parseRun } from './parse/parse-run.js'
 export { readLines } from './parse/read-lines.js'
 export { agentReporter } from './reporters/agent-reporter.js'
@@ -13,11 +20,13 @@ export { tapReporter } from './reporters/tap-reporter.js'
 export type {
   TCliOptions,
   TColorMode,
+  TCoverageReportMode,
   TReporterName,
 } from './typedefs/cli-options.js'
 export type {
   TCoverageRow,
   TCoverageThresholdPct,
+  TCoverageTotals,
 } from './typedefs/coverage.js'
 export type {
   TReporter,

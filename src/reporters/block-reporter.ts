@@ -1,5 +1,6 @@
 import { createConsoleStyles } from '../lib/console-styles.js'
 import { formatCoverageGateFailure } from '../lib/format-coverage-gate.js'
+import { renderCoverageReport } from '../lib/format-coverage-report.js'
 import { formatDuration } from '../lib/format-duration.js'
 import type { TReporter, TReporterDeps } from '../typedefs/reporter.js'
 import type { TTestStatus } from '../typedefs/run-events.js'
@@ -20,6 +21,11 @@ const badgeFor = (
 /** §1.4.6: one badge-prefixed line per test, failure detail inline, a summary at the end. */
 export const blockReporter = (deps: TReporterDeps): TReporter<TBlockState> => {
   const styles = createConsoleStyles(deps.color)
+  const renderCoverage = renderCoverageReport({
+    mode: deps.coverageReport,
+    styles,
+    thresholdPct: deps.thresholdPct,
+  })
 
   return {
     initial: { failures: [] },
@@ -51,8 +57,9 @@ export const blockReporter = (deps: TReporterDeps): TReporter<TBlockState> => {
         }
       }
       if (event.type === 'passthrough' && event.kind === 'coverage') {
-        return event.lines.length > 0
-          ? { state, output: `\n${event.lines.join('\n')}\n` }
+        const lines = renderCoverage(event.lines)
+        return lines.length > 0
+          ? { state, output: `\n${lines.join('\n')}\n` }
           : { state, output: '' }
       }
       if (event.type === 'coverage-gate-failed') {

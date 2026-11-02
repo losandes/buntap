@@ -97,6 +97,7 @@ test(
     expect(styles.bgYellow('x')).toBe('\u001b[43mx\u001b[49m')
     expect(styles.bgCyan('x')).toBe('\u001b[46mx\u001b[49m')
     expect(styles.bgMagenta('x')).toBe('\u001b[45mx\u001b[49m')
+    expect(styles.dim('x')).toBe('\u001b[2mx\u001b[22m')
   },
 )
 
@@ -119,6 +120,7 @@ test(
     expect(styles.bgYellow('x')).toBe('x')
     expect(styles.bgCyan('x')).toBe('x')
     expect(styles.bgMagenta('x')).toBe('x')
+    expect(styles.dim('x')).toBe('x')
   },
 )
 

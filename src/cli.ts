@@ -47,6 +47,11 @@ Options:
   --agent       minimal output, verbose only on failure
   --coverage-threshold=<n>  fail with exit 3 when a file is below <n> (0-1 or 0-100);
                             defaults to [test].coverageThreshold in ./bunfig.toml
+  --coverage-report=<mode>  how coverage is rendered: full, failures, summary,
+                            bar, or markdown; per-reporter default when absent
+                            (tap: full, agent: summary, markdown: markdown,
+                            nyan: bar, block: failures); the tap reporter
+                            always reports coverage in full
   --color       force colour on
   --no-color    force colour off
   --help        print this help and exit
@@ -109,14 +114,16 @@ export const main =
       return 0
     }
 
+    const threshold = resolveThreshold(deps, options.data.coverageThresholdPct)
+    if (threshold.warning !== undefined) deps.writeError(threshold.warning)
+
     const reporter = selectReporter({
       columns: deps.columns,
       isTty: deps.isTty,
       color: resolveColor(options.data.colorMode, deps),
+      coverageReport: options.data.coverageReport,
+      thresholdPct: threshold.thresholdPct,
     })(options.data)
-
-    const threshold = resolveThreshold(deps, options.data.coverageThresholdPct)
-    if (threshold.warning !== undefined) deps.writeError(threshold.warning)
     const gate = evaluateCoverageGate(threshold.thresholdPct)
 
     // §1.3.1-1.3.2: decide protocol vs. text from the first non-empty line,

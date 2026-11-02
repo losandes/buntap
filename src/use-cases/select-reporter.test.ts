@@ -2,7 +2,13 @@ import { expect, test } from 'bun:test'
 import type { TReporterDeps } from '../typedefs/reporter.js'
 import { selectReporter } from './select-reporter.js'
 
-const deps: TReporterDeps = { columns: 80, isTty: false, color: false }
+const deps: TReporterDeps = {
+  columns: 80,
+  isTty: false,
+  color: false,
+  coverageReport: 'full',
+  thresholdPct: undefined,
+}
 
 const cases = [
   { reporter: 'tap', expectedOutput: 'TAP version 14\n' },
@@ -26,6 +32,7 @@ for (const { reporter, expectedOutput } of cases) {
         reporter,
         colorMode: 'auto',
         coverageThresholdPct: undefined,
+        coverageReport: 'full',
       } as const
 
       // when
@@ -55,6 +62,7 @@ test(
       reporter: 'tap',
       colorMode: 'auto',
       coverageThresholdPct: undefined,
+      coverageReport: 'full',
     } as const
 
     // when

@@ -3,7 +3,13 @@ import type { TReporterDeps } from '../typedefs/reporter.js'
 import type { TRunEvent } from '../typedefs/run-events.js'
 import { agentReporter } from './agent-reporter.js'
 
-const deps: TReporterDeps = { columns: 80, isTty: false, color: false }
+const deps: TReporterDeps = {
+  columns: 80,
+  isTty: false,
+  color: false,
+  coverageReport: 'full',
+  thresholdPct: undefined,
+}
 
 test(
   [
@@ -192,7 +198,9 @@ test(
     const event: TRunEvent = {
       type: 'coverage-gate-failed',
       thresholdPct: { functionsPct: 95, linesPct: 95 },
-      failing: [{ file: 'src/add.ts', functionsPct: 25, linesPct: 100 }],
+      failing: [
+        { file: 'src/add.ts', functionsPct: 25, linesPct: 100, uncovered: [] },
+      ],
     }
 
     // when
@@ -202,5 +210,71 @@ test(
     expect(output).toBe(
       'COVERAGE FAIL 1 file below the minimum (functions 95.00%, lines 95.00%)\n  src/add.ts functions 25.00%, lines 100.00%\n',
     )
+  },
+)
+
+const coverageFixture: readonly string[] = [
+  '------------|---------|---------|-------------------',
+  'File        | % Funcs | % Lines | Uncovered Line #s',
+  '------------|---------|---------|-------------------',
+  'All files   |   62.50 |   90.00 |',
+  ' src/add.ts |   25.00 |   90.00 | 4-7',
+  '------------|---------|---------|-------------------',
+]
+
+test(
+  [
+    "given a coverage passthrough event, in the agent reporter's default summary mode",
+    'when reported',
+    "it should print one summary line rather than bun's table",
+  ].join(', '),
+  () => {
+    // given
+    const reporter = agentReporter({
+      ...deps,
+      coverageReport: 'summary',
+      thresholdPct: { functionsPct: 95, linesPct: 95 },
+    })
+    const event: TRunEvent = {
+      type: 'passthrough',
+      kind: 'coverage',
+      lines: coverageFixture,
+    }
+
+    // when
+    const { output } = reporter.next(reporter.initial, event)
+
+    // then
+    expect(output).toBe(
+      '\ncoverage  lines 90.00%  funcs 62.50%  ·  1 files  ·  1 below 95%\n',
+    )
+  },
+)
+
+test(
+  [
+    'given a coverage passthrough event and an overridden --coverage-report=bar',
+    'when reported',
+    'it should render the bar mode instead of the default',
+  ].join(', '),
+  () => {
+    // given
+    const reporter = agentReporter({
+      ...deps,
+      coverageReport: 'bar',
+      thresholdPct: { functionsPct: 95, linesPct: 95 },
+    })
+    const event: TRunEvent = {
+      type: 'passthrough',
+      kind: 'coverage',
+      lines: coverageFixture,
+    }
+
+    // when
+    const { output } = reporter.next(reporter.initial, event)
+
+    // then
+    expect(output).toContain('FAIL')
+    expect(output).toContain('src/add.ts')
   },
 )

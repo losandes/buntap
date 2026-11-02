@@ -320,6 +320,105 @@ for (const { label, flags } of reporterModeFlags) {
   )
 }
 
+const defaultModeShapes = [
+  {
+    label: 'default TAP (full)',
+    flags: [] as readonly string[],
+    assert: (stdout: string) => expect(stdout).toContain('% Funcs'),
+  },
+  {
+    label: '--nyan (bar)',
+    flags: ['--nyan'],
+    assert: (stdout: string) =>
+      expect(stdout).toContain('coverage  95% minimum'),
+  },
+  {
+    label: '--markdown (markdown)',
+    flags: ['--markdown'],
+    assert: (stdout: string) =>
+      expect(stdout).toContain(
+        '<details><summary>Full coverage table</summary>',
+      ),
+  },
+  {
+    label: '--block (failures)',
+    flags: ['--block'],
+    assert: (stdout: string) => expect(stdout).toContain('src/add.ts'),
+  },
+  {
+    label: '--agent (summary)',
+    flags: ['--agent'],
+    assert: (stdout: string) => expect(stdout).toContain('coverage  lines'),
+  },
+]
+
+for (const { label, flags, assert } of defaultModeShapes) {
+  test(
+    [
+      `given the low-coverage fixture with ${label}`,
+      'when run with --coverage-threshold=0.95',
+      "it should render that reporter's default coverage mode, still print COVERAGE FAIL, and exit 3",
+    ].join(', '),
+    async () => {
+      // given
+      const { deps, stdout } = makeDeps(lowCoverageFixture)
+
+      // when
+      const code = await main(deps)([...flags, '--coverage-threshold=0.95'])
+
+      // then
+      assert(stdout())
+      expect(stdout()).toContain('COVERAGE FAIL')
+      expect(code).toBe(3)
+    },
+  )
+}
+
+test(
+  [
+    'given the low-coverage fixture with --block',
+    'when run with --coverage-report=summary overriding its failures default',
+    'it should print the summary line instead of the filtered table',
+  ].join(', '),
+  async () => {
+    // given
+    const { deps, stdout } = makeDeps(lowCoverageFixture)
+
+    // when
+    const code = await main(deps)([
+      '--block',
+      '--coverage-threshold=0.95',
+      '--coverage-report=summary',
+    ])
+
+    // then
+    expect(stdout()).toContain('coverage  lines')
+    expect(stdout()).not.toContain('% Funcs')
+    expect(code).toBe(3)
+  },
+)
+
+test(
+  [
+    'given the fully-covered fixture with --agent',
+    'when run with --coverage-threshold=0.95',
+    'it should print the summary line and exit 0',
+  ].join(', '),
+  async () => {
+    // given
+    const { deps, stdout } = makeDeps(coverageFixture)
+
+    // when
+    const code = await main(deps)(['--agent', '--coverage-threshold=0.95'])
+
+    // then
+    expect(stdout()).toContain(
+      'coverage  lines 100.00%  funcs 100.00%  \u00b7  1 files  \u00b7  all above 95%',
+    )
+    expect(code).toBe(0)
+  },
+)
+
 test(
   [
     'given the low-coverage fixture',
