@@ -390,6 +390,102 @@ async function* consume(state, iterator) {
 }
 var parseRun = (lines) => consume(initialParseState, lines[Symbol.asyncIterator]());
 
+// src/parse/peek-first-line.ts
+var toAsyncIterable = (buffered, iterator) => ({
+  [Symbol.asyncIterator]: () => {
+    const prefix = buffered[Symbol.iterator]();
+    return {
+      next: () => {
+        const fromPrefix = prefix.next();
+        return fromPrefix.done !== true ? Promise.resolve(fromPrefix) : iterator.next();
+      }
+    };
+  }
+});
+var consume2 = async (iterator, buffered) => {
+  const next = await iterator.next();
+  if (next.done === true) {
+    return { firstLine: undefined, rest: toAsyncIterable(buffered, iterator) };
+  }
+  if (next.value.trim().length > 0) {
+    return {
+      firstLine: next.value,
+      rest: toAsyncIterable([...buffered, next.value], iterator)
+    };
+  }
+  return consume2(iterator, [...buffered, next.value]);
+};
+var peekFirstNonEmptyLine = (lines) => consume2(lines[Symbol.asyncIterator](), []);
+
+// src/protocol/parse-json-line.ts
+var parseJsonLine = (line) => {
+  try {
+    return { status: "ok", data: JSON.parse(line) };
+  } catch (err) {
+    return {
+      status: "error",
+      error: err instanceof Error ? err.message : "invalid JSON"
+    };
+  }
+};
+
+// src/protocol/protocol-event.ts
+var PROTOCOL_VERSION = 1;
+
+// src/protocol/decode-protocol-line.ts
+var isRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+var isStringArray = (value) => Array.isArray(value) && value.every((item) => typeof item === "string");
+var isOptional = (value, guard) => value === undefined || guard(value);
+var isString = (value) => typeof value === "string";
+var isNumber = (value) => typeof value === "number";
+var isBoolean = (value) => typeof value === "boolean";
+var isNullableNumber = (value) => value === null || typeof value === "number";
+var isNullableString = (value) => value === null || typeof value === "string";
+var isTotals = (value) => isRecord(value) && isNumber(value.pass) && isNumber(value.fail) && isNumber(value.skip) && isNumber(value.todo) && isNumber(value.errors) && isNumber(value.expectCalls) && isNumber(value.tests) && isNumber(value.files) && isOptional(value.durationMs, isNumber);
+var isThresholdPct = (value) => isRecord(value) && isNumber(value.functionsPct) && isNumber(value.linesPct);
+var isCoverageRow = (value) => isRecord(value) && isString(value.file) && isNumber(value.functionsPct) && isNumber(value.linesPct);
+var isCoverageRowArray = (value) => Array.isArray(value) && value.every(isCoverageRow);
+var isWellFormed = (value) => {
+  switch (value.type) {
+    case "runner-start":
+      return isStringArray(value.argv);
+    case "runner-exit":
+      return isNullableNumber(value.code) && isNullableString(value.signal);
+    case "run-start":
+      return isString(value.version) && isOptional(value.revision, isString);
+    case "file-start":
+      return isString(value.path);
+    case "test":
+      return isString(value.status) && isOptional(value.file, isString) && isString(value.name) && isStringArray(value.path) && isOptional(value.durationMs, isNumber) && isStringArray(value.diagnostics);
+    case "unhandled-error":
+      return isOptional(value.file, isString) && isString(value.message) && isStringArray(value.diagnostics);
+    case "passthrough":
+      return isString(value.kind) && isStringArray(value.lines);
+    case "run-end":
+      return isTotals(value.totals) && isBoolean(value.summarySeen);
+    case "coverage-gate-failed":
+      return isThresholdPct(value.thresholdPct) && isCoverageRowArray(value.failing);
+    default:
+      return false;
+  }
+};
+var hasRecognisedVersion = (value) => isRecord(value) && value.v === PROTOCOL_VERSION;
+var decodeProtocolLine = (line) => {
+  const parsed = parseJsonLine(line);
+  if (parsed.status === "error")
+    return parsed;
+  if (!hasRecognisedVersion(parsed.data)) {
+    return { status: "error", error: "unrecognised protocol line" };
+  }
+  if (typeof parsed.data.type !== "string" || !isWellFormed(parsed.data)) {
+    return { status: "error", error: "malformed protocol event" };
+  }
+  return { status: "ok", data: parsed.data };
+};
+
+// src/use-cases/detect-input-mode.ts
+var detectInputMode = (firstNonEmptyLine) => decodeProtocolLine(firstNonEmptyLine).status === "ok" ? "protocol" : "text";
+
 // src/parse/parse-coverage-table.ts
 var splitCells = (line) => line.split("|").map((cell) => cell.trim());
 var findHeaderIndex = (rows) => rows.findIndex((cells) => cells[0] === "File");
@@ -490,6 +586,10 @@ var parseCliOptions = (argv) => {
   };
 };
 
+// src/use-cases/render-verdict-line.ts
+var renderVerdictLine = (verdict) => `buntap: ${verdict.message} - exiting ${verdict.code}
+`;
+
 // src/use-cases/resolve-exit-code.ts
 var initialExitState = {
   sawFailure: false,
@@ -518,6 +618,66 @@ var resolveExitCode = (state) => {
   if (state.sawFailure)
     return 1;
   return state.coverageGateFailed ? 3 : 0;
+};
+
+// src/lib/signal-to-number.ts
+import { constants } from "node:os";
+var signalToNumber = (signal) => {
+  const signals = constants.signals;
+  return signals[signal];
+};
+
+// src/use-cases/resolve-protocol-exit-code.ts
+var initialProtocolExitState = {
+  exitState: initialExitState,
+  totals: undefined,
+  runnerExit: undefined
+};
+var nextProtocolExitState = (state, event) => {
+  if (event.type === "runner-start")
+    return state;
+  if (event.type === "runner-exit") {
+    return {
+      ...state,
+      runnerExit: { code: event.code, signal: event.signal }
+    };
+  }
+  return {
+    ...state,
+    exitState: nextExitState(state.exitState, event),
+    totals: event.type === "run-end" ? event.totals : state.totals
+  };
+};
+var pluralTests = (count) => `${count} test${count === 1 ? "" : "s"}`;
+var resolveProtocolVerdict = (state) => {
+  const fail = (state.totals?.fail ?? 0) + (state.totals?.errors ?? 0);
+  if (state.exitState.sawFailure) {
+    return { code: 1, message: `${pluralTests(fail)} failed` };
+  }
+  if (state.exitState.coverageGateFailed) {
+    return { code: 3, message: "coverage below the configured minimum" };
+  }
+  const { runnerExit } = state;
+  if (runnerExit !== undefined && runnerExit.signal !== null) {
+    const signalNumber = signalToNumber(runnerExit.signal) ?? 0;
+    return {
+      code: 128 + signalNumber,
+      message: `bun was killed by ${runnerExit.signal}`
+    };
+  }
+  if (runnerExit !== undefined && runnerExit.code !== null && runnerExit.code !== 0) {
+    return {
+      code: runnerExit.code,
+      message: `bun exited ${runnerExit.code} before reporting any tests`
+    };
+  }
+  if (runnerExit === undefined) {
+    return {
+      code: 2,
+      message: "the runner stopped without reporting its exit code"
+    };
+  }
+  return { code: 0, message: `${pluralTests(state.totals?.pass ?? 0)} passed` };
 };
 
 // src/lib/format-coverage-gate.ts
@@ -1231,8 +1391,33 @@ ${HELP}`);
   if (threshold.warning !== undefined)
     deps.writeError(threshold.warning);
   const gate = evaluateCoverageGate(threshold.thresholdPct);
+  const peeked = await peekFirstNonEmptyLine(deps.input);
+  const mode = peeked.firstLine === undefined ? "text" : detectInputMode(peeked.firstLine);
+  if (mode === "protocol") {
+    let protocolState = initialProtocolExitState;
+    for await (const line of peeked.rest) {
+      const decoded = decodeProtocolLine(line);
+      if (decoded.status === "error")
+        continue;
+      const event = decoded.data;
+      if (event.type === "runner-start")
+        continue;
+      if (event.type === "runner-exit") {
+        protocolState = nextProtocolExitState(protocolState, event);
+        continue;
+      }
+      for (const gated of gate(event)) {
+        deps.write(reporter.next(gated));
+        protocolState = nextProtocolExitState(protocolState, gated);
+      }
+    }
+    deps.write(reporter.end());
+    const verdict = resolveProtocolVerdict(protocolState);
+    deps.writeError(renderVerdictLine(verdict));
+    return verdict.code;
+  }
   let exitState = initialExitState;
-  for await (const event of parseRun(deps.input)) {
+  for await (const event of parseRun(peeked.rest)) {
     for (const gated of gate(event)) {
       deps.write(reporter.next(gated));
       exitState = nextExitState(exitState, gated);
@@ -1247,7 +1432,7 @@ ${HELP}`);
 };
 
 // src/parse/read-lines.ts
-var consume2 = async function* (carry, iterator) {
+var consume3 = async function* (carry, iterator) {
   const next = await iterator.next();
   if (next.done === true) {
     if (carry.length > 0)
@@ -1258,9 +1443,9 @@ var consume2 = async function* (carry, iterator) {
   const lines = text.split(/\r\n|\n/);
   const nextCarry = lines.at(-1) ?? "";
   yield* lines.slice(0, -1);
-  yield* consume2(nextCarry, iterator);
+  yield* consume3(nextCarry, iterator);
 };
-var readLines = (input) => consume2("", input[Symbol.asyncIterator]());
+var readLines = (input) => consume3("", input[Symbol.asyncIterator]());
 
 // src/bin.ts
 var readTextFile = (path) => {

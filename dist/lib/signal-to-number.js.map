@@ -1,0 +1,1 @@
+{"version":3,"file":"signal-to-number.js","sourceRoot":"","sources":["../../src/lib/signal-to-number.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,SAAS,EAAE,MAAM,SAAS,CAAA;AAEnC;;;;;GAKG;AACH,MAAM,CAAC,MAAM,cAAc,GAAG,CAAC,MAAc,EAAsB,EAAE;IACnE,MAAM,OAAO,GAAG,SAAS,CAAC,OAA2C,CAAA;IACrE,OAAO,OAAO,CAAC,MAAM,CAAC,CAAA;AACxB,CAAC,CAAA"}
