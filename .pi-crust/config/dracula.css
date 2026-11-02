@@ -1,0 +1,85 @@
+/*
+ * Dracula — the published palette, fitted to this app's channel set.
+ *
+ * The palette is eight hues and four greys. This app needs fourteen hues and
+ * eight surfaces, so the extras below are interpolated inside Dracula's own
+ * families rather than borrowed from somewhere else, and every one of them
+ * carries the contrast it measures against the Dracula background (40 42 54).
+ * Where a value is Dracula's own, it says so by name.
+ *
+ * Every channel is `R G B` without commas, so a component can take a slice of
+ * one with `rgb(var(--green-rgb) / .2)`. A hex value here will render, and
+ * then fail everywhere something needs it translucent.
+ *
+ * Registered in crust.observe.yaml; delete both to drop it.
+ */
+[data-theme='dracula'] {
+  color-scheme: dark;
+
+  /*
+   * Surfaces. Dracula publishes Background (40 42 54) and Selection
+   * (68 71 90) and nothing between them, so the panel ramp is interpolated
+   * along that line. The bands are measured against the panel they sit on,
+   * because a table that cannot be read across is the failure these numbers
+   * exist to prevent.
+   */
+  --bg-rgb: 40 42 54; /* Background #282A36 */
+  --panel-rgb: 45 47 60;
+  --panel-2-rgb: 54 57 72;
+  /* 1.20:1 against the panel — enough to follow a row across, not enough to
+     read as banding. The dark theme lands on the same ratio. */
+  --zebra-rgb: 56 59 75;
+  /* 1.32:1 against the panel and 1.10:1 against the stripe, so the header is
+     the heaviest band and is never mistaken for one of the rows. */
+  --table-head-rgb: 62 65 83;
+  --panel-3-rgb: 35 37 48;
+  --border-rgb: 68 71 90; /* Selection #44475A */
+  --border-soft-rgb: 58 61 78;
+
+  /*
+   * Text. Dracula's Comment (98 114 164) measures 3.03:1 here, which is below
+   * the floor for text of any size, so the two recessed roles are that hue
+   * lightened until they clear it rather than the literal value.
+   */
+  --text-rgb: 248 248 242; /* Foreground #F8F8F2 — 13.36:1 */
+  --dim-rgb: 199 204 224; /* 8.91:1 */
+  --faint-rgb: 154 163 199; /* Comment, lightened — 5.72:1 */
+
+  /*
+   * Hues. Eight are Dracula's; six are interpolations, placed where the
+   * roster needs a lane that no other lane can be mistaken for.
+   */
+  --green-rgb: 80 250 123; /* Green #50FA7B — 10.38:1 */
+  --red-rgb: 255 85 85; /* Red #FF5555 — 4.53:1 */
+  --blue-rgb: 139 185 253; /* Cyan toward Purple — 7.09:1 */
+  --amber-rgb: 255 184 108; /* Orange #FFB86C — 8.36:1 */
+  --purple-rgb: 189 147 249; /* Purple #BD93F9 — 5.90:1 */
+  --cyan-rgb: 139 233 253; /* Cyan #8BE9FD — 10.29:1 */
+  --violet-rgb: 164 155 250; /* between Purple and the blue above — 5.86:1 */
+  /* The lane pink, held apart from Dracula's Pink so that `waiting` below can
+     have that hue to itself. 8.10:1. */
+  --pink-rgb: 255 169 218;
+  --lime-rgb: 241 250 140; /* Yellow #F1FA8C — 12.74:1 */
+  --teal-rgb: 79 224 192; /* between Green and Cyan — 8.65:1 */
+  --indigo-rgb: 148 156 240; /* 5.61:1 */
+  --orange-rgb: 255 150 80; /* Orange, pushed redder so a lane is not the warn colour — 6.60:1 */
+  --rose-rgb: 255 110 138; /* between Red and Pink — 5.32:1 */
+  /*
+   * Waiting. Dracula's Pink itself, reserved: a run stopped for a person is
+   * the one state on the screen that will not resolve itself, and it cannot
+   * share a colour with an agent lane.
+   */
+  --hotpink-rgb: 255 121 198; /* Pink #FF79C6 — 5.97:1 */
+
+  /* Depth, in Dracula's own purple and cyan rather than the dark theme's. */
+  --surface: linear-gradient(180deg, rgb(45 47 60) 0%, rgb(40 42 54) 100%);
+  --app-bg:
+    radial-gradient(1100px 700px at 8% -10%, rgb(var(--purple-rgb) / 0.10), transparent 62%),
+    radial-gradient(1000px 720px at 102% 108%, rgb(var(--cyan-rgb) / 0.07), transparent 60%),
+    linear-gradient(180deg, rgb(40 42 54) 0%, rgb(35 37 48) 100%);
+
+  --border-width: 1px;
+  --focus-width: 2px;
+  --shadow-panel: 0 1px 2px rgb(0 0 0 / 0.45);
+  --glow-strength: 0.4;
+}

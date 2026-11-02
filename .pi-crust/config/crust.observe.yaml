@@ -1,52 +1,46 @@
-# crust.observe.yaml — watching a run: where the trace goes, who serves it,
-# and what it looks like.
-#
-# This was two places. The trace database and the poll cadence were an
-# `observability:` block inside crust.config.yaml, which is otherwise the
-# agent roster, and the themes were a file of their own. Both answer the same
-# question — how do I watch this — so they are one file, and the roster is
-# left to be about agents.
-#
-# A developer's private deviation still goes in crust.config.local.yaml under
-# an `observability:` key, which is gitignored: everything below is reachable
-# from there, key by key, with the local value winning.
 
-db: .pi-crust/data/crust.db        # tracer writes here directly; the UI polls it
-poll_ms: 500                       # visualizer live-poll cadence
-
-# The two servers `just crust observe` boots, and the ports every run assumes
-# when it prints a link to itself. Move them when something else on this
-# machine already owns one — a second checkout of this repository watching its
-# own runs is the usual reason.
+# Trace database, visualizer settings, and UI themes.
 #
-# CRUST_BE_PORT and CRUST_FE_PORT still win, for a one-off that is not worth
-# committing.
+# db, poll_ms, and ports load under `observability:` in the configuration.
+# The trace UI reads themes and default_theme directly.
+#
+# Configuration precedence (highest first):
+#   1. CLI flags
+#   2. Environment variables (CRUST_DB, CRUST_BE_PORT, CRUST_FE_PORT)
+#   3. Repository-local crust.config.local.yaml (observability:)
+#   4. Machine-level crust.config.yaml (override:)
+#   5. This file
+#   6. Machine-level crust.config.yaml (top level)
+#   7. Built-in defaults
+#
+# See references/config.md for details.
+
+# Shared trace database across worktrees. {primary_worktree} resolves to
+# the main checkout, preserving run history when worktrees are removed.
+# Keep this path aligned with defaults.data_dir; alignment is not enforced.
+#
+# For a per-worktree database, use .pi-crust/data/crust.db.
+# Relative paths resolve from the repository root; ~ expands to home.
+db: "{primary_worktree}/.pi-crust/data/crust.db"
+
+# Visualizer polling interval (milliseconds).
+poll_ms: 500
+
+# Ports for `just crust observe`. Environment variables override these.
 ports:
-  backend: 4600                    # the API: the UI proxies to it, runs probe it
-  frontend: 4601                   # the web app you open
+  backend: 4600                    # API server
+  frontend: 4601                   # Web UI
 
-# ── themes ──────────────────────────────────────────────────────────────────
-# Every theme the trace UI offers.
-#
-# The defaults are registered here rather than built in, so you can remove
-# one: delete the entry and it leaves the picker. A file that only held your
-# additions could add to a fixed set and never subtract from it.
-#
-# A theme is a name, a label, and where its styles come from. `builtin: true`
-# means the stylesheet ships with pi-crust. `stylesheet:` names one in this
-# repository, relative to .pi-crust/ — which is how you ship your own without
-# pi-crust knowing anything about it.
-#
-# Plain CSS, not SCSS. A theme is a block of colour channels under its own
-# `[data-theme='name']` selector, so nesting and variables buy nothing, and
-# compiling would put a build step between editing the file and seeing the
-# colour change. The trace UI reads this file and injects the CSS; reload to
-# pick up an edit.
+# Themes available in the trace UI. Removing an entry removes it from the picker.
+# Built-in themes ship with pi-crust; custom stylesheets are relative to .pi-crust/.
+# Custom themes use plain CSS with [data-theme='name'] selectors.
+# Reload the UI after editing a stylesheet.
 
-# Which theme this repository starts on. `auto` follows the system.
+# Initial theme; auto follows the system preference.
 default_theme: auto
 
 themes:
+  # Built-in themes
   - name: auto
     label: Match the system
     builtin: true
@@ -59,15 +53,11 @@ themes:
     label: Dark
     builtin: true
 
-  # Not a builtin: a worked example of the thing above, stamped beside this
-  # file. Open config/high-contrast.css to see everything a theme can reach —
-  # colour channels, border widths, gradients, focus rings — then copy it to
-  # start your own. Delete both the file and this entry to drop it.
+  # Examples of custom themes
+  - name: dracula
+    label: Dracula
+    stylesheet: config/dracula.css
+
   - name: high-contrast
     label: High contrast
     stylesheet: config/high-contrast.css
-
-  # Yours. Copy the entry above and point it at your own stylesheet.
-  # - name: midnight
-  #   label: Midnight
-  #   stylesheet: config/midnight.css
