@@ -5,5 +5,5 @@
     "declaration": true,
     "outDir": "dist"
   },
-  "exclude": ["**/*.test.ts", "**/*.fixture.ts", "src/bin.ts"]
+  "exclude": ["**/*.test.ts", "**/*.fixture.ts", "src/bin.ts", "src/bunt.ts"]
 }

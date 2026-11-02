@@ -14,6 +14,8 @@ coverageThreshold = 0.95 # { line = 0.7, function = 0.8, statement = 0.9 }
 # patterns. Can be a single string pattern or an array of patterns.
 coveragePathIgnorePatterns = [
   "**/bin.ts",
+  "**/bunt.ts",
+  "**/spawn-bun-test.ts",
 ]
 
 # Outputs for coverage reports.

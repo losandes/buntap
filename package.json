@@ -4,7 +4,8 @@
   "description": "Pipe bun test output through a TAP14, nyan, markdown, block, or agent reporter",
   "type": "module",
   "bin": {
-    "buntap": "./dist/bin.js"
+    "buntap": "./dist/bin.js",
+    "bunt": "./dist/bunt.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -25,7 +26,7 @@
   },
   "scripts": {
     "// BUILD": "=============================BUILD=============================",
-    "build": "bun build ./src/bin.ts --target=node --format=esm --outdir=dist && tsc -p tsconfig.build.json",
+    "build": "bun build ./src/bin.ts ./src/bunt.ts --target=node --format=esm --outdir=dist && tsc -p tsconfig.build.json",
     "// LINT": "==============================LINT==============================",
     "lint": "biome check .",
     "lint:fix": "biome check . --fix",
