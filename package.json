@@ -41,7 +41,7 @@
     "// TYPECHECK": "=======================TYPECHECK===========================",
     "typecheck": "tsc --noEmit",
     "// PUBLISH": "==========================PUBLISH============================",
-    "prepublish": "bun run lint && bun run typecheck && bun run test:agent && bun run build"
+    "prepublishOnly": "bun run lint && bun run typecheck && bun run test:agent && bun run build"
   },
   "engines": {
     "node": ">=22"
