@@ -1,0 +1,43 @@
+# This workflow installs dependencies, lints, type-checks, builds, and tests
+# the package on every push and pull request against main.
+# For more information see: https://github.com/oven-sh/setup-bun
+
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun --version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Lint the code
+        run: bun run lint
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      # buntap reports its own test output, so the CLI must be built before
+      # the test scripts (which pipe `bun test` through it) can run.
+      - name: Build
+        run: bun run build
+
+      - name: Run tests with coverage
+        env:
+          CI: true
+        run: ./bin/test-tap --coverage
