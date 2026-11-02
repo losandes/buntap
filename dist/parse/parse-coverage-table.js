@@ -1,5 +1,10 @@
 const splitCells = (line) => line.split('|').map((cell) => cell.trim());
 const findHeaderIndex = (rows) => rows.findIndex((cells) => cells[0] === 'File');
+const findAllFilesIndex = (rows, headerIndex) => rows.slice(headerIndex + 1).findIndex((cells) => cells[0] === 'All files');
+const toUncovered = (cell) => (cell ?? '')
+    .split(',')
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
 /**
  * Locates the `File` header row and reads the `% Funcs`/`% Lines` column
  * indexes from it, rather than assuming positions, so a transposed table
@@ -15,6 +20,7 @@ export const parseCoverageTable = (lines) => {
     const header = rows[headerIndex];
     const funcsIndex = header.indexOf('% Funcs');
     const linesIndex = header.indexOf('% Lines');
+    const uncoveredIndex = header.indexOf('Uncovered Line #s');
     if (funcsIndex === -1 || linesIndex === -1)
         return [];
     const toRow = (cells) => {
@@ -25,11 +31,38 @@ export const parseCoverageTable = (lines) => {
         const linesPct = Number(cells[linesIndex]);
         if (!(Number.isFinite(functionsPct) && Number.isFinite(linesPct)))
             return undefined;
-        return { file, functionsPct, linesPct };
+        const uncovered = uncoveredIndex === -1 ? [] : toUncovered(cells[uncoveredIndex]);
+        return { file, functionsPct, linesPct, uncovered };
     };
     return rows
         .slice(headerIndex + 1)
         .map(toRow)
         .filter((row) => row !== undefined);
+};
+/**
+ * §1.2.2: reads `% Funcs`/`% Lines` from the `All files` row and sets
+ * `files` to the number of rows `parseCoverageTable` returns for the same
+ * input. Returns `undefined` when there is no header row, no `All files`
+ * row, or either percentage cell does not parse as a finite number.
+ */
+export const parseCoverageTotals = (lines) => {
+    const rows = lines.map(splitCells);
+    const headerIndex = findHeaderIndex(rows);
+    if (headerIndex === -1)
+        return undefined;
+    const header = rows[headerIndex];
+    const funcsIndex = header.indexOf('% Funcs');
+    const linesIndex = header.indexOf('% Lines');
+    if (funcsIndex === -1 || linesIndex === -1)
+        return undefined;
+    const allFilesOffset = findAllFilesIndex(rows, headerIndex);
+    if (allFilesOffset === -1)
+        return undefined;
+    const allFilesRow = rows[headerIndex + 1 + allFilesOffset];
+    const functionsPct = Number(allFilesRow[funcsIndex]);
+    const linesPct = Number(allFilesRow[linesIndex]);
+    if (!(Number.isFinite(functionsPct) && Number.isFinite(linesPct)))
+        return undefined;
+    return { functionsPct, linesPct, files: parseCoverageTable(lines).length };
 };
 //# sourceMappingURL=parse-coverage-table.js.map

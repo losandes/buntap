@@ -13,6 +13,7 @@ export const createConsoleStyles = (color) => color
         bgYellow: wrap(43, 49),
         bgCyan: wrap(46, 49),
         bgMagenta: wrap(45, 49),
+        dim: wrap(2, 22),
         ansi256: (code, input) => `\u001b[38;5;${code}m${input}\u001b[0m`,
     }
     : {
@@ -26,6 +27,7 @@ export const createConsoleStyles = (color) => color
         bgYellow: passthrough,
         bgCyan: passthrough,
         bgMagenta: passthrough,
+        dim: passthrough,
         ansi256: (_code, input) => input,
     };
 export const cursorUp = (lines) => lines > 0 ? `\u001b[${lines}A` : '';

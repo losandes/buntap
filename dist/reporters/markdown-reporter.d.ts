@@ -12,5 +12,5 @@ export type TMarkdownState = Readonly<{
     gateFailureLines: readonly string[];
 }>;
 /** §1.4.5: emitted once, from `end`, because the nested bullet tree needs every test seen before it can be rendered. */
-export declare const markdownReporter: (_deps: TReporterDeps) => TReporter<TMarkdownState>;
+export declare const markdownReporter: (deps: TReporterDeps) => TReporter<TMarkdownState>;
 export {};

@@ -1,7 +1,8 @@
 export { main } from './cli.js';
 export { formatCoverageGateFailure } from './lib/format-coverage-gate.js';
+export { renderCoverageReport, } from './lib/format-coverage-report.js';
 export { parseBunfigThreshold } from './parse/parse-bunfig-threshold.js';
-export { parseCoverageTable } from './parse/parse-coverage-table.js';
+export { parseCoverageTable, parseCoverageTotals, } from './parse/parse-coverage-table.js';
 export { parseRun } from './parse/parse-run.js';
 export { readLines } from './parse/read-lines.js';
 export { agentReporter } from './reporters/agent-reporter.js';
