@@ -295,6 +295,45 @@ test(
 
 test(
   [
+    'given a gate-failed event whose failing row has uncovered lines',
+    'when the reporter ends',
+    'it should append the uncovered suffix to that bullet',
+  ].join(', '),
+  () => {
+    // given
+    const reporter = markdownReporter(deps)
+    const coverageEvent: TRunEvent = {
+      type: 'passthrough',
+      kind: 'coverage',
+      lines: ['File | % Funcs | % Lines', ' src/add.ts | 25.00 | 100.00'],
+    }
+    const gateEvent: TRunEvent = {
+      type: 'coverage-gate-failed',
+      thresholdPct: { functionsPct: 95, linesPct: 95 },
+      failing: [
+        {
+          file: 'src/add.ts',
+          functionsPct: 25,
+          linesPct: 100,
+          uncovered: ['4-7', '12', '20-22'],
+        },
+      ],
+    }
+
+    // when
+    const afterCoverage = reporter.next(reporter.initial, coverageEvent)
+    const afterGate = reporter.next(afterCoverage.state, gateEvent)
+    const output = reporter.end(afterGate.state)
+
+    // then
+    expect(output).toContain(
+      '- `src/add.ts` functions 25.00%, lines 100.00% (uncovered 4-7, 12, 20-22)',
+    )
+  },
+)
+
+test(
+  [
     'given the generated document',
     'when inspected',
     'it should follow the house markdown rules it claims to',

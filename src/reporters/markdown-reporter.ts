@@ -1,4 +1,5 @@
 import { createConsoleStyles } from '../lib/console-styles.js'
+import { formatUncoveredSuffix } from '../lib/format-coverage-gate.js'
 import { renderCoverageReport } from '../lib/format-coverage-report.js'
 import { formatDuration } from '../lib/format-duration.js'
 import type { TReporter, TReporterDeps } from '../typedefs/reporter.js'
@@ -164,7 +165,7 @@ export const markdownReporter = (
           '',
           ...event.failing.map(
             (row) =>
-              `- \`${row.file}\` functions ${row.functionsPct.toFixed(2)}%, lines ${row.linesPct.toFixed(2)}%`,
+              `- \`${row.file}\` functions ${row.functionsPct.toFixed(2)}%, lines ${row.linesPct.toFixed(2)}%${formatUncoveredSuffix(row.uncovered)}`,
           ),
         ]
         return {

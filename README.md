@@ -61,7 +61,7 @@ Do not add `set -o pipefail` to this pipeline. `bunt` deliberately exits with bu
 
 ## Coverage
 
-`bun test --coverage`'s per-file coverage data is rendered in one of five modes - `full`, `failures`, `summary`, `bar`, `markdown` - chosen per reporter by default and overridable with `--coverage-report=<mode>`. When a file falls below the configured minimum, buntap prints a `COVERAGE FAIL` block and exits `3` in every mode; that block and the exit code never change. The threshold comes from `--coverage-threshold=<n>` or from `[test].coverageThreshold` in `./bunfig.toml`; only the `lines` and `functions` keys of the inline-table form are evaluated (bun's text table has no statements column). A run with no threshold configured still renders the chosen mode and exits `0`.
+`bun test --coverage`'s per-file coverage data is rendered in one of five modes - `full`, `failures`, `summary`, `bar`, `markdown` - chosen per reporter by default and overridable with `--coverage-report=<mode>`. When a file falls below the configured minimum, buntap prints a `COVERAGE FAIL` block and exits `3` in every mode; that block's format is the same in every mode, names the uncovered lines of each failing file, and the exit code never changes. The threshold comes from `--coverage-threshold=<n>` or from `[test].coverageThreshold` in `./bunfig.toml`; only the `lines` and `functions` keys of the inline-table form are evaluated (bun's text table has no statements column). A run with no threshold configured still renders the chosen mode and exits `0`.
 
 ### Coverage report modes
 
@@ -109,6 +109,14 @@ coverage  lines 94.10%  funcs 96.80%  ·  48 files  ·  2 below 95%
 
 </details>
 ````
+
+`COVERAGE FAIL`, printed in every mode when a file trips the threshold:
+
+```text
+COVERAGE FAIL 2 files below the minimum (functions 95.00%, lines 95.00%)
+  src/add.ts functions 25.00%, lines 100.00% (uncovered 4-7, 12, 20-22)
+  src/sub.ts functions 50.00%, lines 60.00%
+```
 
 Colour is never the only carrier of a distinction: every mode renders the same words and numbers with colour off as with colour on.
 
