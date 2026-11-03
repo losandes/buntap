@@ -626,7 +626,7 @@ var parseCliOptions = (argv) => {
     return { status: "ok", data: { mode: "help" } };
   if (argv.includes("--version"))
     return { status: "ok", data: { mode: "version" } };
-  const reporters = argv.map((flag) => REPORTER_FLAGS[flag]).filter((reporter2) => reporter2 !== undefined);
+  const reporters = argv.map((flag) => REPORTER_FLAGS[flag]).filter((reporter) => reporter !== undefined);
   const distinctReporters = [...new Set(reporters)];
   if (distinctReporters.length > 1) {
     return { status: "error", error: "only one reporter flag may be given" };
@@ -782,11 +782,12 @@ var showCursor = () => "\x1B[?25h";
 
 // src/lib/format-coverage-gate.ts
 var pct = (value) => value.toFixed(2);
+var formatUncoveredSuffix = (uncovered) => uncovered.length === 0 ? "" : ` (uncovered ${uncovered.join(", ")})`;
 var formatCoverageGateFailure = (event) => {
   const { thresholdPct, failing } = event;
   const noun = failing.length === 1 ? "file" : "files";
   const headline = `COVERAGE FAIL ${failing.length} ${noun} below the minimum (functions ${pct(thresholdPct.functionsPct)}%, lines ${pct(thresholdPct.linesPct)}%)`;
-  const rows = failing.map((row) => `  ${row.file} functions ${pct(row.functionsPct)}%, lines ${pct(row.linesPct)}%`);
+  const rows = failing.map((row) => `  ${row.file} functions ${pct(row.functionsPct)}%, lines ${pct(row.linesPct)}%${formatUncoveredSuffix(row.uncovered)}`);
   return [headline, ...rows];
 };
 
@@ -798,30 +799,30 @@ var MAX_BAR_ROWS = 10;
 var splitCells2 = (line) => line.split("|").map((cell) => cell.trim());
 var isRuleLine = (line) => /^-+(?:\|-+)*$/.test(line.trim());
 var rowFails = (row, thresholdPct) => row.functionsPct < thresholdPct.functionsPct || row.linesPct < thresholdPct.linesPct;
-var trimPct = (pct2) => String(pct2);
-var pctColor = (pct2, thresholdValue) => {
+var trimPct = (pct) => String(pct);
+var pctColor = (pct, thresholdValue) => {
   if (thresholdValue === undefined) {
-    if (pct2 >= 100)
+    if (pct >= 100)
       return "green";
-    return pct2 >= 90 ? "yellow" : "red";
+    return pct >= 90 ? "yellow" : "red";
   }
-  if (pct2 < thresholdValue)
+  if (pct < thresholdValue)
     return "red";
-  return pct2 <= thresholdValue + 5 ? "yellow" : "green";
+  return pct <= thresholdValue + 5 ? "yellow" : "green";
 };
-var formatPct = (pct2) => `${pct2.toFixed(2)}%`.padStart(PCT_FIELD_WIDTH);
+var formatPct = (pct) => `${pct.toFixed(2)}%`.padStart(PCT_FIELD_WIDTH);
 var padPath = (path) => path.length <= PATH_WIDTH ? path.padStart(PATH_WIDTH) : `…${path.slice(path.length - (PATH_WIDTH - 1))}`;
 var lowerMetric = (row) => row.linesPct <= row.functionsPct ? { metric: "lines", pct: row.linesPct } : { metric: "funcs", pct: row.functionsPct };
 var rowsBelow100 = (rows) => rows.filter((row) => row.linesPct < 100 || row.functionsPct < 100).map((row) => ({ row, ...lowerMetric(row) })).toSorted((a, b) => a.pct - b.pct || a.row.file.localeCompare(b.row.file));
-var buildBar = (pct2, thresholdValue, styles) => {
-  const filled = Math.round(pct2 / 100 * BAR_WIDTH);
+var buildBar = (pct, thresholdValue, styles) => {
+  const filled = Math.round(pct / 100 * BAR_WIDTH);
   const cells = Array.from({ length: BAR_WIDTH }, (_, i) => i < filled ? "█" : "░");
   const withMarker = thresholdValue === undefined ? cells : [
     ...cells.slice(0, Math.max(0, Math.min(BAR_WIDTH, Math.round(thresholdValue / 100 * BAR_WIDTH)))),
     "┊",
     ...cells.slice(Math.max(0, Math.min(BAR_WIDTH, Math.round(thresholdValue / 100 * BAR_WIDTH))))
   ];
-  const color = styles[pctColor(pct2, thresholdValue)];
+  const color = styles[pctColor(pct, thresholdValue)];
   return withMarker.map((cell) => cell === "█" ? color(cell) : cell).join("");
 };
 var colorizeCell = (segment, thresholdValue, styles) => {
@@ -911,12 +912,12 @@ var renderBar = (_lines, deps, rows, totals) => {
   const below = rowsBelow100(rows);
   const selected = below.slice(0, MAX_BAR_ROWS);
   const dropped = Math.max(below.length - MAX_BAR_ROWS, 0);
-  const rowLines = selected.map(({ row, metric, pct: pct2 }) => {
+  const rowLines = selected.map(({ row, metric, pct }) => {
     const thresholdValue = deps.thresholdPct === undefined ? undefined : metric === "lines" ? deps.thresholdPct.linesPct : deps.thresholdPct.functionsPct;
     const path = padPath(row.file);
     const metricLabel = metric.padEnd(5);
-    const pctField = deps.styles[pctColor(pct2, thresholdValue)](formatPct(pct2));
-    const bar = buildBar(pct2, thresholdValue, deps.styles);
+    const pctField = deps.styles[pctColor(pct, thresholdValue)](formatPct(pct));
+    const bar = buildBar(pct, thresholdValue, deps.styles);
     const badge = badgeFor(row, deps.thresholdPct, deps.styles);
     const uncovered = deps.styles.cyan(row.uncovered.join(", "));
     return `  ${path}  ${metricLabel}  ${pctField}  ${bar}  ${badge}  ${uncovered}`;
@@ -1257,7 +1258,7 @@ var markdownReporter = (deps) => {
         const markdownLines = [
           `**COVERAGE FAIL** ${event.failing.length} ${event.failing.length === 1 ? "file" : "files"} below the minimum (functions ${event.thresholdPct.functionsPct.toFixed(2)}%, lines ${event.thresholdPct.linesPct.toFixed(2)}%)`,
           "",
-          ...event.failing.map((row) => `- \`${row.file}\` functions ${row.functionsPct.toFixed(2)}%, lines ${row.linesPct.toFixed(2)}%`)
+          ...event.failing.map((row) => `- \`${row.file}\` functions ${row.functionsPct.toFixed(2)}%, lines ${row.linesPct.toFixed(2)}%${formatUncoveredSuffix(row.uncovered)}`)
         ];
         return {
           state: {
@@ -1337,7 +1338,7 @@ var faceFor = (tally) => {
 };
 var nyanReporter = (deps) => {
   const styles = createConsoleStyles(deps.color);
-  const renderCoverage2 = renderCoverageReport({
+  const renderCoverage = renderCoverageReport({
     mode: deps.coverageReport,
     styles,
     thresholdPct: deps.thresholdPct
@@ -1390,7 +1391,7 @@ var nyanReporter = (deps) => {
     output: `
 ${hideCursor()}${renderScoreboard(state.tally)}`
   };
-  const renderFailure2 = (file, name, diagnostics) => [`FAIL ${file ?? "(unknown file)"} > ${name}`, ...diagnostics].join(`
+  const renderFailure = (file, name, diagnostics) => [`FAIL ${file ?? "(unknown file)"} > ${name}`, ...diagnostics].join(`
 `);
   const summaryLine = (totals) => `${totals.tests} tests, ${totals.pass} passed, ${totals.fail} failed, ${totals.skip} skipped in ${formatDuration(totals.durationMs)}
 `;
@@ -1414,10 +1415,10 @@ ${hideCursor()}${renderScoreboard(state.tally)}`
         const tally = foldTally(begun.state.tally, event);
         const failures = event.type === "test" && event.status === "fail" ? [
           ...begun.state.failures,
-          renderFailure2(event.file, event.name, event.diagnostics)
+          renderFailure(event.file, event.name, event.diagnostics)
         ] : event.type === "unhandled-error" ? [
           ...begun.state.failures,
-          renderFailure2(event.file, event.message, event.diagnostics)
+          renderFailure(event.file, event.message, event.diagnostics)
         ] : begun.state.failures;
         const drawn = draw({ ...begun.state, tally, failures });
         return { state: drawn.state, output: begun.output + drawn.output };
@@ -1448,7 +1449,7 @@ ${hideCursor()}${renderScoreboard(state.tally)}`
 ${state.failures.join(`
 `)}
 ` : "";
-        const renderedCoverage = renderCoverage2(state.coverageLines);
+        const renderedCoverage = renderCoverage(state.coverageLines);
         const coverageDump = renderedCoverage.length > 0 ? `
 ${renderedCoverage.join(`
 `)}

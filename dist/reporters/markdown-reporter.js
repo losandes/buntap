@@ -1,4 +1,5 @@
 import { createConsoleStyles } from '../lib/console-styles.js';
+import { formatUncoveredSuffix } from '../lib/format-coverage-gate.js';
 import { renderCoverageReport } from '../lib/format-coverage-report.js';
 import { formatDuration } from '../lib/format-duration.js';
 const zeroTotals = {
@@ -124,7 +125,7 @@ export const markdownReporter = (deps) => {
                 const markdownLines = [
                     `**COVERAGE FAIL** ${event.failing.length} ${event.failing.length === 1 ? 'file' : 'files'} below the minimum (functions ${event.thresholdPct.functionsPct.toFixed(2)}%, lines ${event.thresholdPct.linesPct.toFixed(2)}%)`,
                     '',
-                    ...event.failing.map((row) => `- \`${row.file}\` functions ${row.functionsPct.toFixed(2)}%, lines ${row.linesPct.toFixed(2)}%`),
+                    ...event.failing.map((row) => `- \`${row.file}\` functions ${row.functionsPct.toFixed(2)}%, lines ${row.linesPct.toFixed(2)}%${formatUncoveredSuffix(row.uncovered)}`),
                 ];
                 return {
                     state: {
