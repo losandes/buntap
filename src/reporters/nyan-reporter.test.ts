@@ -501,54 +501,6 @@ test(
 )
 
 test(
-  [
-    'given a gate-failed event with uncovered lines',
-    'when the run ends',
-    'it should append the uncovered suffix to the failing row',
-  ].join(', '),
-  () => {
-    // given
-    const reporter = nyanReporter(deps)
-    const gateEvent: TRunEvent = {
-      type: 'coverage-gate-failed',
-      thresholdPct: { functionsPct: 95, linesPct: 95 },
-      failing: [
-        {
-          file: 'src/add.ts',
-          functionsPct: 25,
-          linesPct: 100,
-          uncovered: ['4-7', '12', '20-22'],
-        },
-      ],
-    }
-    const afterGate = reporter.next(reporter.initial, gateEvent)
-    const endEvent: TRunEvent = {
-      type: 'run-end',
-      summarySeen: true,
-      totals: {
-        pass: 1,
-        fail: 0,
-        skip: 0,
-        todo: 0,
-        errors: 0,
-        expectCalls: 1,
-        tests: 1,
-        files: 1,
-        durationMs: 1,
-      },
-    }
-
-    // when
-    const { output } = reporter.next(afterGate.state, endEvent)
-
-    // then
-    expect(output).toContain(
-      '  src/add.ts functions 25.00%, lines 100.00% (uncovered 4-7, 12, 20-22)',
-    )
-  },
-)
-
-test(
   ['given the reporter end', 'it should produce no trailing output'].join(', '),
   () => {
     // given

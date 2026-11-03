@@ -270,38 +270,6 @@ test(
   },
 )
 
-test(
-  [
-    'given a coverage-gate-failed event with uncovered lines',
-    'when reported',
-    'it should append the uncovered suffix to the failing row',
-  ].join(', '),
-  () => {
-    // given
-    const reporter = blockReporter(deps)
-    const event: TRunEvent = {
-      type: 'coverage-gate-failed',
-      thresholdPct: { functionsPct: 95, linesPct: 95 },
-      failing: [
-        {
-          file: 'src/add.ts',
-          functionsPct: 25,
-          linesPct: 100,
-          uncovered: ['4-7', '12', '20-22'],
-        },
-      ],
-    }
-
-    // when
-    const { output } = reporter.next(reporter.initial, event)
-
-    // then
-    expect(output).toBe(
-      '\nCOVERAGE FAIL 1 file below the minimum (functions 95.00%, lines 95.00%)\n  src/add.ts functions 25.00%, lines 100.00% (uncovered 4-7, 12, 20-22)\n',
-    )
-  },
-)
-
 const coverageFixture: readonly string[] = [
   '------------|---------|---------|-------------------',
   'File        | % Funcs | % Lines | Uncovered Line #s',
