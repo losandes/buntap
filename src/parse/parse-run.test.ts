@@ -388,6 +388,119 @@ test(
 
 test(
   [
+    // @1.2.2
+    'given a pending diagnostic buffer',
+    "when a 'rollup-header' line is stepped",
+    'it should set rollup true, flush the buffer as a passthrough, and emit nothing else',
+  ].join(', '),
+  () => {
+    // given
+    const withBuffer = {
+      ...initialParseState,
+      diagnostics: ['stray line before the roll-up'],
+    }
+
+    // when
+    const result = stepLine(withBuffer, '1 tests skipped:')
+
+    // then
+    expect(result.state.rollup).toBe(true)
+    expect(result.state.diagnostics).toEqual([])
+    expect(result.events).toEqual([
+      {
+        type: 'passthrough',
+        kind: 'output',
+        lines: ['stray line before the roll-up'],
+      },
+    ])
+  },
+)
+
+test(
+  [
+    // @1.2.3
+    'given an open roll-up',
+    'when a result line is stepped',
+    'it should emit no events and leave state unchanged',
+  ].join(', '),
+  () => {
+    // given
+    const withOpenRollup = {
+      ...initialParseState,
+      currentFile: 'src/a.test.ts',
+      diagnostics: ['leftover'],
+      rollup: true,
+    }
+
+    // when
+    const result = stepLine(withOpenRollup, '(skip) skip me')
+
+    // then
+    expect(result.events).toEqual([])
+    expect(result.state).toEqual(withOpenRollup)
+  },
+)
+
+test(
+  [
+    // @1.2.4
+    'given an open roll-up',
+    'when a blank line is stepped',
+    'it should leave rollup true',
+  ].join(', '),
+  () => {
+    // given
+    const withOpenRollup = { ...initialParseState, rollup: true }
+
+    // when
+    const result = stepLine(withOpenRollup, '   ')
+
+    // then
+    expect(result.state.rollup).toBe(true)
+    expect(result.events).toEqual([])
+  },
+)
+
+test(
+  [
+    // @1.2.4
+    'given an open roll-up',
+    'when a second roll-up-header line is stepped',
+    'it should leave rollup true',
+  ].join(', '),
+  () => {
+    // given
+    const withOpenRollup = { ...initialParseState, rollup: true }
+
+    // when
+    const result = stepLine(withOpenRollup, '1 tests failed:')
+
+    // then
+    expect(result.state.rollup).toBe(true)
+  },
+)
+
+test(
+  [
+    // @1.2.5
+    'given an open roll-up',
+    'when a line of any other recognised kind is stepped (the fail-safe)',
+    'it should close the roll-up back to false',
+  ].join(', '),
+  () => {
+    // given
+    const withOpenRollup = { ...initialParseState, rollup: true }
+
+    // when
+    const result = stepLine(withOpenRollup, 'src/a.test.ts:')
+
+    // then
+    expect(result.state.rollup).toBe(false)
+  },
+)
+
+test(
+  [
     'given an unhandled-error block whose content has no error: line',
     'when it closes',
     'it should fall back to the file as the message',
