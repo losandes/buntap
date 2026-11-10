@@ -25,6 +25,7 @@ export type TClassifiedLine =
       durationMs: number | undefined
     }>
   | Readonly<{ kind: 'text'; raw: string }>
+  | Readonly<{ kind: 'rollup-header'; status: TTestStatus; count: number }>
 
 const BANNER = /^bun test v(\S+)(?:\s+\(([0-9a-fA-F]+)\))?$/
 const FILE_HEADER =
@@ -37,6 +38,13 @@ const SUMMARY_STATUS_COUNT = /^ (\d+) (pass|fail|skip|todo|error)$/
 const SUMMARY_EXPECT_COUNT = /^ (\d+) expect\(\) calls$/
 const SUMMARY_RAN =
   /^Ran (\d+) tests? across (\d+) files?\.(?:\s+\[(\d+(?:\.\d+)?)(ms|s)\])?$/
+const ROLLUP_HEADER = /^(\d+) tests? (skipped|todo|failed):$/
+
+const ROLLUP_STATUS: Readonly<Record<string, TTestStatus>> = {
+  skipped: 'skip',
+  todo: 'todo',
+  failed: 'fail',
+}
 
 const toMs = (amount: string, unit: string): number =>
   unit === 's' ? Number(amount) * 1000 : Number(amount)
@@ -104,6 +112,16 @@ export const classifyLine = (line: string): TClassifiedLine => {
       kind: 'summary-count',
       field: 'expectCalls',
       value: Number(expectCount[1]),
+    }
+  }
+
+  const rollup = ROLLUP_HEADER.exec(line)
+  if (rollup) {
+    const [, count, word] = rollup
+    return {
+      kind: 'rollup-header',
+      status: ROLLUP_STATUS[word ?? ''] ?? 'skip',
+      count: Number(count),
     }
   }
 

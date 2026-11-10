@@ -3,7 +3,9 @@ import type { TRunEvent } from '../typedefs/run-events.js'
 import {
   consoleLogBeforePassFixture,
   coverageFixture,
+  failRollupFixture,
   mixedResultsFixture,
+  skipTodoRollupFixture,
   unhandledErrorFixture,
 } from './bun-output.fixture.js'
 import {
@@ -68,6 +70,82 @@ test(
         durationMs: 14,
       },
     })
+  },
+)
+
+test(
+  [
+    'given a fixture where bun reprints skip and todo tests a second time',
+    "in a trailing roll-up section ('N tests skipped:' / 'N tests todo:')",
+    'when parsed',
+    'it should emit exactly one test event per test, matching the summary totals',
+  ].join(', '),
+  async () => {
+    // given
+    const input = linesOf(skipTodoRollupFixture)
+
+    // when
+    const events = await collect(parseRun(input))
+    const testEvents = events.filter(
+      (event): event is Extract<TRunEvent, { type: 'test' }> =>
+        event.type === 'test',
+    )
+    const runEnd = events.find(
+      (event): event is Extract<TRunEvent, { type: 'run-end' }> =>
+        event.type === 'run-end',
+    )
+
+    // then: the fixture's own summary says 4 tests (2 pass, 1 skip, 1 todo)
+    expect(runEnd?.totals.tests).toBe(4)
+    expect(testEvents).toHaveLength(4)
+    expect(testEvents.filter((event) => event.status === 'skip')).toHaveLength(
+      1,
+    )
+    expect(testEvents.filter((event) => event.status === 'todo')).toHaveLength(
+      1,
+    )
+  },
+)
+
+test(
+  [
+    'given a fixture where bun reprints a failed test a second time',
+    "in a trailing roll-up section ('1 tests failed:')",
+    'when parsed',
+    'it should emit exactly one test event, attributed to its own file, carrying only its own diagnostics',
+  ].join(', '),
+  async () => {
+    // given
+    const input = linesOf(failRollupFixture)
+
+    // when
+    const events = await collect(parseRun(input))
+    const testEvents = events.filter(
+      (event): event is Extract<TRunEvent, { type: 'test' }> =>
+        event.type === 'test',
+    )
+    const failEvents = testEvents.filter((event) => event.status === 'fail')
+    const runEnd = events.find(
+      (event): event is Extract<TRunEvent, { type: 'run-end' }> =>
+        event.type === 'run-end',
+    )
+    const passthroughLines = events
+      .filter(
+        (event): event is Extract<TRunEvent, { type: 'passthrough' }> =>
+          event.type === 'passthrough',
+      )
+      .flatMap((event) => event.lines)
+
+    // then
+    expect(failEvents).toHaveLength(1)
+    expect(failEvents[0]?.file).toBe('src/b.test.ts')
+    expect(
+      failEvents[0]?.diagnostics.some((line) => line.startsWith('error:')),
+    ).toBe(true)
+    expect(passthroughLines.some((line) => line === '1 tests failed:')).toBe(
+      false,
+    )
+    expect(runEnd?.totals.tests).toBe(3)
   },
 )
 
