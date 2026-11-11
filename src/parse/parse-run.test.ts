@@ -3,7 +3,9 @@ import type { TRunEvent } from '../typedefs/run-events.js'
 import {
   consoleLogBeforePassFixture,
   coverageFixture,
+  failRollupFixture,
   mixedResultsFixture,
+  skipTodoRollupFixture,
   unhandledErrorFixture,
 } from './bun-output.fixture.js'
 import {
@@ -68,6 +70,82 @@ test(
         durationMs: 14,
       },
     })
+  },
+)
+
+test(
+  [
+    'given a fixture where bun reprints skip and todo tests a second time',
+    "in a trailing roll-up section ('N tests skipped:' / 'N tests todo:')",
+    'when parsed',
+    'it should emit exactly one test event per test, matching the summary totals',
+  ].join(', '),
+  async () => {
+    // given
+    const input = linesOf(skipTodoRollupFixture)
+
+    // when
+    const events = await collect(parseRun(input))
+    const testEvents = events.filter(
+      (event): event is Extract<TRunEvent, { type: 'test' }> =>
+        event.type === 'test',
+    )
+    const runEnd = events.find(
+      (event): event is Extract<TRunEvent, { type: 'run-end' }> =>
+        event.type === 'run-end',
+    )
+
+    // then: the fixture's own summary says 4 tests (2 pass, 1 skip, 1 todo)
+    expect(runEnd?.totals.tests).toBe(4)
+    expect(testEvents).toHaveLength(4)
+    expect(testEvents.filter((event) => event.status === 'skip')).toHaveLength(
+      1,
+    )
+    expect(testEvents.filter((event) => event.status === 'todo')).toHaveLength(
+      1,
+    )
+  },
+)
+
+test(
+  [
+    'given a fixture where bun reprints a failed test a second time',
+    "in a trailing roll-up section ('1 tests failed:')",
+    'when parsed',
+    'it should emit exactly one test event, attributed to its own file, carrying only its own diagnostics',
+  ].join(', '),
+  async () => {
+    // given
+    const input = linesOf(failRollupFixture)
+
+    // when
+    const events = await collect(parseRun(input))
+    const testEvents = events.filter(
+      (event): event is Extract<TRunEvent, { type: 'test' }> =>
+        event.type === 'test',
+    )
+    const failEvents = testEvents.filter((event) => event.status === 'fail')
+    const runEnd = events.find(
+      (event): event is Extract<TRunEvent, { type: 'run-end' }> =>
+        event.type === 'run-end',
+    )
+    const passthroughLines = events
+      .filter(
+        (event): event is Extract<TRunEvent, { type: 'passthrough' }> =>
+          event.type === 'passthrough',
+      )
+      .flatMap((event) => event.lines)
+
+    // then
+    expect(failEvents).toHaveLength(1)
+    expect(failEvents[0]?.file).toBe('src/b.test.ts')
+    expect(
+      failEvents[0]?.diagnostics.some((line) => line.startsWith('error:')),
+    ).toBe(true)
+    expect(passthroughLines.some((line) => line === '1 tests failed:')).toBe(
+      false,
+    )
+    expect(runEnd?.totals.tests).toBe(3)
   },
 )
 
@@ -305,6 +383,119 @@ test(
     // then
     expect(result.state.diagnostics).toEqual(['------------------'])
     expect(result.events).toEqual([])
+  },
+)
+
+test(
+  [
+    // @1.2.2
+    'given a pending diagnostic buffer',
+    "when a 'rollup-header' line is stepped",
+    'it should set rollup true, flush the buffer as a passthrough, and emit nothing else',
+  ].join(', '),
+  () => {
+    // given
+    const withBuffer = {
+      ...initialParseState,
+      diagnostics: ['stray line before the roll-up'],
+    }
+
+    // when
+    const result = stepLine(withBuffer, '1 tests skipped:')
+
+    // then
+    expect(result.state.rollup).toBe(true)
+    expect(result.state.diagnostics).toEqual([])
+    expect(result.events).toEqual([
+      {
+        type: 'passthrough',
+        kind: 'output',
+        lines: ['stray line before the roll-up'],
+      },
+    ])
+  },
+)
+
+test(
+  [
+    // @1.2.3
+    'given an open roll-up',
+    'when a result line is stepped',
+    'it should emit no events and leave state unchanged',
+  ].join(', '),
+  () => {
+    // given
+    const withOpenRollup = {
+      ...initialParseState,
+      currentFile: 'src/a.test.ts',
+      diagnostics: ['leftover'],
+      rollup: true,
+    }
+
+    // when
+    const result = stepLine(withOpenRollup, '(skip) skip me')
+
+    // then
+    expect(result.events).toEqual([])
+    expect(result.state).toEqual(withOpenRollup)
+  },
+)
+
+test(
+  [
+    // @1.2.4
+    'given an open roll-up',
+    'when a blank line is stepped',
+    'it should leave rollup true',
+  ].join(', '),
+  () => {
+    // given
+    const withOpenRollup = { ...initialParseState, rollup: true }
+
+    // when
+    const result = stepLine(withOpenRollup, '   ')
+
+    // then
+    expect(result.state.rollup).toBe(true)
+    expect(result.events).toEqual([])
+  },
+)
+
+test(
+  [
+    // @1.2.4
+    'given an open roll-up',
+    'when a second roll-up-header line is stepped',
+    'it should leave rollup true',
+  ].join(', '),
+  () => {
+    // given
+    const withOpenRollup = { ...initialParseState, rollup: true }
+
+    // when
+    const result = stepLine(withOpenRollup, '1 tests failed:')
+
+    // then
+    expect(result.state.rollup).toBe(true)
+  },
+)
+
+test(
+  [
+    // @1.2.5
+    'given an open roll-up',
+    'when a line of any other recognised kind is stepped (the fail-safe)',
+    'it should close the roll-up back to false',
+  ].join(', '),
+  () => {
+    // given
+    const withOpenRollup = { ...initialParseState, rollup: true }
+
+    // when
+    const result = stepLine(withOpenRollup, 'src/a.test.ts:')
+
+    // then
+    expect(result.state.rollup).toBe(false)
   },
 )
 
