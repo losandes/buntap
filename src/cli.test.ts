@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test'
 import { main } from './cli.js'
 import {
   coverageFixture,
+  failRollupFixture,
   lowCoverageFixture,
   mixedResultsFixture,
 } from './parse/bun-output.fixture.js'
@@ -117,6 +118,51 @@ test(
     // then
     expect(code).toBe(0)
     expect(stdout().split('\n').filter(Boolean)).toHaveLength(1)
+  },
+)
+
+test(
+  [
+    'given a fixture where bun reprints a failed test in a trailing roll-up',
+    'when run with no flags',
+    "it should emit a TAP plan line matching its own '# tests' footer and exactly one 'not ok'",
+  ].join(', '),
+  async () => {
+    // given
+    const { deps, stdout } = makeDeps(failRollupFixture)
+
+    // when
+    await main(deps)([])
+
+    // then
+    const output = stdout()
+    const planLine = output.split('\n').find((line) => /^1\.\.\d+$/.test(line))
+    const footerLine = output
+      .split('\n')
+      .find((line) => line.startsWith('# tests '))
+    expect(planLine).toBe(`1..${footerLine?.split(' ').at(-1)}`)
+    expect(
+      output.split('\n').filter((line) => line.startsWith('not ok')),
+    ).toHaveLength(1)
+  },
+)
+
+test(
+  [
+    'given a fixture where bun reprints a failed test in a trailing roll-up',
+    'when run with --agent',
+    "it should print exactly one 'FAIL ' block",
+  ].join(', '),
+  async () => {
+    // given
+    const { deps, stdout } = makeDeps(failRollupFixture)
+
+    // when
+    await main(deps)(['--agent'])
+
+    // then
+    const matches = stdout().match(/FAIL /g) ?? []
+    expect(matches).toHaveLength(1)
   },
 )
 

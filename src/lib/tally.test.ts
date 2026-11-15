@@ -1,6 +1,18 @@
 import { expect, test } from 'bun:test'
+import {
+  failRollupFixture,
+  skipTodoRollupFixture,
+} from '../parse/bun-output.fixture.js'
+import { parseRun } from '../parse/parse-run.js'
 import type { TRunEvent } from '../typedefs/run-events.js'
 import { foldTally, initialTally } from './tally.js'
+
+const linesOf = (text: string): AsyncIterable<string> => ({
+  [Symbol.asyncIterator]: () => {
+    const iterator = text.split('\n').slice(0, -1)[Symbol.iterator]()
+    return { next: () => Promise.resolve(iterator.next()) }
+  },
+})
 
 test(
   [
@@ -92,5 +104,60 @@ test(
 
     // then
     expect(actual).toBe(initialTally)
+  },
+)
+
+test(
+  [
+    // @1.3.1
+    "given a fixture where bun reprints skipped/todo results in a trailing roll-up ('N tests skipped:'/'N tests todo:')",
+    'when its events are folded into the tally end to end via parseRun',
+    "it should reach a running total equal to the run-end's own totals.tests",
+  ].join(', '),
+  async () => {
+    // given
+    let events: readonly TRunEvent[] = []
+    for await (const event of parseRun(linesOf(skipTodoRollupFixture))) {
+      events = [...events, event]
+    }
+    const runEnd = events.find(
+      (event): event is Extract<TRunEvent, { type: 'run-end' }> =>
+        event.type === 'run-end',
+    )
+
+    // when
+    const tally = events.reduce(foldTally, initialTally)
+
+    // then
+    expect(runEnd?.totals.tests).toBeDefined()
+    expect(tally.total).toBe(runEnd?.totals.tests ?? -1)
+  },
+)
+
+test(
+  [
+    // @1.3.1
+    "given a fixture where bun reprints a failed result in a trailing roll-up ('1 tests failed:')",
+    'when its events are folded into the tally end to end via parseRun',
+    "it should reach a running total equal to the run-end's own totals.tests, not double-counted",
+  ].join(', '),
+  async () => {
+    // given
+    let events: readonly TRunEvent[] = []
+    for await (const event of parseRun(linesOf(failRollupFixture))) {
+      events = [...events, event]
+    }
+    const runEnd = events.find(
+      (event): event is Extract<TRunEvent, { type: 'run-end' }> =>
+        event.type === 'run-end',
+    )
+
+    // when
+    const tally = events.reduce(foldTally, initialTally)
+
+    // then
+    expect(runEnd?.totals.tests).toBeDefined()
+    expect(tally.total).toBe(runEnd?.totals.tests ?? -1)
+    expect(tally.fail).toBe(1)
   },
 )

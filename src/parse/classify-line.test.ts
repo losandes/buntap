@@ -378,3 +378,86 @@ test(
     expect(actual).toEqual({ kind: 'text', raw: line })
   },
 )
+
+const rollupHeaderCases = [
+  { input: '1 tests skipped:', status: 'skip', count: 1 },
+  { input: '1 tests todo:', status: 'todo', count: 1 },
+  { input: '3 tests failed:', status: 'fail', count: 3 },
+] as const
+
+for (const { input, status, count } of rollupHeaderCases) {
+  test(
+    [
+      `given the roll-up header '${input}'`,
+      'when classified',
+      `it should be kind rollup-header with status ${status}`,
+    ].join(', '),
+    () => {
+      // given
+      // when
+      const actual = classifyLine(input)
+
+      // then
+      expect(actual).toEqual({ kind: 'rollup-header', status, count })
+    },
+  )
+}
+
+test(
+  [
+    "given a roll-up-shaped line bun does not print ('2 tests passed:')",
+    'when classified',
+    'it should still be kind text',
+  ].join(', '),
+  () => {
+    // given
+    const line = '2 tests passed:'
+
+    // when
+    const actual = classifyLine(line)
+
+    // then
+    expect(actual).toEqual({ kind: 'text', raw: line })
+  },
+)
+
+test(
+  [
+    "given a roll-up-shaped line with an unrecognised word ('3 tests filtered out:')",
+    'when classified',
+    'it should still be kind text',
+  ].join(', '),
+  () => {
+    // given
+    const line = '3 tests filtered out:'
+
+    // when
+    const actual = classifyLine(line)
+
+    // then
+    expect(actual).toEqual({ kind: 'text', raw: line })
+  },
+)
+
+test(
+  [
+    'given a result line that would appear inside a roll-up section',
+    'when classified',
+    'it should still be kind result, classification stays context-free',
+  ].join(', '),
+  () => {
+    // given
+    const line = '(fail) boom [0.21ms]'
+
+    // when
+    const actual = classifyLine(line)
+
+    // then
+    expect(actual).toEqual({
+      kind: 'result',
+      status: 'fail',
+      name: 'boom',
+      durationMs: 0.21,
+    })
+  },
+)

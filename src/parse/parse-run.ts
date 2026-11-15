@@ -1,4 +1,5 @@
 import type { TRunEvent, TTotals } from '../typedefs/run-events.js'
+import type { TClassifiedLine } from './classify-line.js'
 import { classifyLine } from './classify-line.js'
 import { stripAnsi } from './strip-ansi.js'
 
@@ -25,6 +26,7 @@ export type TParseState = Readonly<{
   coverage: TCoverageCapture
   unhandledError: TUnhandledErrorCapture
   totals: TTotalsAccumulator
+  rollup: boolean
 }>
 
 export type TStepResult = Readonly<{
@@ -38,6 +40,7 @@ export const initialParseState: TParseState = {
   coverage: { active: false, lines: [] },
   unhandledError: { active: false, openSeen: false, lines: [] },
   totals: { pass: 0, fail: 0, skip: 0, todo: 0, errors: 0, expectCalls: 0 },
+  rollup: false,
 }
 
 const flushDiagnostics = (state: TParseState): TStepResult =>
@@ -117,15 +120,11 @@ const stepUnhandledError = (state: TParseState, line: string): TStepResult => {
   }
 }
 
-/** One pure transition: the current state plus one raw input line in, the next state plus zero or more events out. */
-export const stepLine = (state: TParseState, rawLine: string): TStepResult => {
-  const line = stripAnsi(rawLine)
-
-  if (state.coverage.active) return stepCoverage(state, line)
-  if (state.unhandledError.active) return stepUnhandledError(state, line)
-
-  const classified = classifyLine(line)
-
+const stepClassified = (
+  state: TParseState,
+  classified: TClassifiedLine,
+  line: string,
+): TStepResult => {
   switch (classified.kind) {
     case 'blank':
       return { state, events: [] }
@@ -232,7 +231,45 @@ export const stepLine = (state: TParseState, rawLine: string): TStepResult => {
         state: { ...state, diagnostics: [...state.diagnostics, line] },
         events: [],
       }
+
+    case 'rollup-header': {
+      const flushed = flushDiagnostics(state)
+      return {
+        state: { ...flushed.state, rollup: true },
+        events: flushed.events,
+      }
+    }
   }
+}
+
+/**
+ * One pure transition: the current state plus one raw input line in, the next
+ * state plus zero or more events out.
+ *
+ * Bun's console reporter reprints every skipped, todo, and failed result a
+ * second time in a trailing roll-up ("N tests skipped:" and friends) once a
+ * run is large enough. Those lines are restatements, not tests, so a result
+ * inside an open roll-up emits nothing; anything that is not blank and not
+ * another roll-up header closes the roll-up, so an unrecognised shape loses
+ * at most the restatements and never a real test.
+ */
+export const stepLine = (state: TParseState, rawLine: string): TStepResult => {
+  const line = stripAnsi(rawLine)
+
+  if (state.coverage.active) return stepCoverage(state, line)
+  if (state.unhandledError.active) return stepUnhandledError(state, line)
+
+  const classified = classifyLine(line)
+
+  if (state.rollup && classified.kind === 'result') return { state, events: [] }
+
+  const stepped = stepClassified(state, classified, line)
+
+  return !stepped.state.rollup ||
+    classified.kind === 'blank' ||
+    classified.kind === 'rollup-header'
+    ? stepped
+    : { state: { ...stepped.state, rollup: false }, events: stepped.events }
 }
 
 const zeroTotals: TTotals = {
