@@ -12,7 +12,7 @@ test(
     const argv: readonly string[] = []
 
     // when
-    const actual = parseCliOptions(argv)
+    const actual = parseCliOptions({})(argv)
 
     // then
     expect(actual).toEqual({
@@ -45,7 +45,7 @@ for (const { flag, reporter } of reporterFlagCases) {
     () => {
       // given
       // when
-      const actual = parseCliOptions([flag])
+      const actual = parseCliOptions({})([flag])
 
       // then
       const defaults = {
@@ -74,7 +74,7 @@ test(
   () => {
     // given
     // when
-    const actual = parseCliOptions(['--color'])
+    const actual = parseCliOptions({})(['--color'])
 
     // then
     expect(actual).toEqual({
@@ -95,7 +95,7 @@ test(
   () => {
     // given
     // when
-    const actual = parseCliOptions(['--no-color'])
+    const actual = parseCliOptions({})(['--no-color'])
 
     // then
     expect(actual).toEqual({
@@ -116,7 +116,7 @@ test(
   () => {
     // given
     // when
-    const actual = parseCliOptions(['--help'])
+    const actual = parseCliOptions({})(['--help'])
 
     // then
     expect(actual).toEqual({ status: 'ok', data: { mode: 'help' } })
@@ -130,7 +130,7 @@ test(
   () => {
     // given
     // when
-    const actual = parseCliOptions(['--version'])
+    const actual = parseCliOptions({})(['--version'])
 
     // then
     expect(actual).toEqual({ status: 'ok', data: { mode: 'version' } })
@@ -146,7 +146,7 @@ test(
   () => {
     // given
     // when
-    const actual = parseCliOptions(['--nyan', '--markdown'])
+    const actual = parseCliOptions({})(['--nyan', '--markdown'])
 
     // then
     expect(actual).toEqual({
@@ -165,7 +165,7 @@ test(
   () => {
     // given
     // when
-    const actual = parseCliOptions(['--nyan', '--nyan'])
+    const actual = parseCliOptions({})(['--nyan', '--nyan'])
 
     // then
     expect(actual).toEqual({
@@ -190,7 +190,7 @@ test(
   () => {
     // given
     // when
-    const actual = parseCliOptions(['--wat'])
+    const actual = parseCliOptions({})(['--wat'])
 
     // then
     expect(actual).toEqual({ status: 'error', error: "unknown flag '--wat'" })
@@ -206,7 +206,7 @@ test(
   () => {
     // given
     // when
-    const actual = parseCliOptions(['--coverage-threshold=95'])
+    const actual = parseCliOptions({})(['--coverage-threshold=95'])
 
     // then
     expect(actual).toEqual({
@@ -231,7 +231,7 @@ test(
   () => {
     // given
     // when
-    const actual = parseCliOptions(['--coverage-threshold=0.95'])
+    const actual = parseCliOptions({})(['--coverage-threshold=0.95'])
 
     // then
     expect(actual).toEqual({
@@ -256,7 +256,7 @@ test(
   () => {
     // given
     // when
-    const actual = parseCliOptions(['--coverage-threshold=1'])
+    const actual = parseCliOptions({})(['--coverage-threshold=1'])
 
     // then
     expect(actual).toEqual({
@@ -284,7 +284,7 @@ for (const raw of invalidThresholdCases) {
     () => {
       // given
       // when
-      const actual = parseCliOptions([`--coverage-threshold=${raw}`])
+      const actual = parseCliOptions({})([`--coverage-threshold=${raw}`])
 
       // then
       expect(actual.status).toBe('error')
@@ -301,7 +301,7 @@ test(
   () => {
     // given
     // when
-    const actual = parseCliOptions(['--coverage-threshold'])
+    const actual = parseCliOptions({})(['--coverage-threshold'])
 
     // then
     expect(actual).toEqual({
@@ -329,7 +329,10 @@ for (const mode of coverageReportModeCases) {
     () => {
       // given
       // when
-      const actual = parseCliOptions([`--coverage-report=${mode}`, '--block'])
+      const actual = parseCliOptions({})([
+        `--coverage-report=${mode}`,
+        '--block',
+      ])
 
       // then
       expect(actual).toEqual({
@@ -355,7 +358,7 @@ test(
   () => {
     // given
     // when
-    const actual = parseCliOptions(['--coverage-report=diagram'])
+    const actual = parseCliOptions({})(['--coverage-report=diagram'])
 
     // then
     expect(actual).toEqual({
@@ -374,7 +377,7 @@ test(
   () => {
     // given
     // when
-    const actual = parseCliOptions(['--coverage-report'])
+    const actual = parseCliOptions({})(['--coverage-report'])
 
     // then
     expect(actual).toEqual({
@@ -404,7 +407,7 @@ for (const { reporter, flag, mode } of reporterDefaultModeCases) {
       const argv = flag === undefined ? [] : [flag]
 
       // when
-      const actual = parseCliOptions(argv)
+      const actual = parseCliOptions({})(argv)
 
       // then
       expect(actual.status).toBe('ok')
@@ -426,7 +429,7 @@ test(
   () => {
     // given
     // when
-    const actual = parseCliOptions(['--agent', '--coverage-report=bar'])
+    const actual = parseCliOptions({})(['--agent', '--coverage-report=bar'])
 
     // then
     expect(actual.status).toBe('ok')
@@ -447,7 +450,7 @@ test(
   () => {
     // given
     // when
-    const actual = parseCliOptions(['--coverage-report=full'])
+    const actual = parseCliOptions({})(['--coverage-report=full'])
 
     // then
     expect(actual).toEqual({
@@ -475,7 +478,7 @@ for (const mode of nonFullModesOnTap) {
     () => {
       // given
       // when
-      const actual = parseCliOptions([`--coverage-report=${mode}`])
+      const actual = parseCliOptions({})([`--coverage-report=${mode}`])
 
       // then
       expect(actual).toEqual({
@@ -485,3 +488,163 @@ for (const mode of nonFullModesOnTap) {
     },
   )
 }
+
+const reporterEnvCases = [
+  { value: 'tap', coverageReport: 'full' },
+  { value: 'nyan', coverageReport: 'bar' },
+  { value: 'markdown', coverageReport: 'markdown' },
+  { value: 'block', coverageReport: 'bar' },
+  { value: 'agent', coverageReport: 'summary' },
+] as const
+
+for (const { value, coverageReport } of reporterEnvCases) {
+  test(
+    [
+      `given BUNTAP_REPORTER=${value} and no reporter flag`,
+      'when parsed',
+      `it should select the ${value} reporter with its default coverage report`,
+    ].join(', '),
+    () => {
+      // given
+      const env = { BUNTAP_REPORTER: value }
+
+      // when
+      const actual = parseCliOptions(env)([])
+
+      // then
+      expect(actual).toEqual({
+        status: 'ok',
+        data: {
+          mode: 'run',
+          reporter: value,
+          colorMode: 'auto',
+          coverageThresholdPct: undefined,
+          coverageReport,
+        },
+      })
+    },
+  )
+}
+
+test(
+  [
+    'given BUNTAP_REPORTER=nyan and the --agent flag',
+    'when parsed',
+    'it should let the flag supersede the environment',
+  ].join(', '),
+  () => {
+    // given
+    const env = { BUNTAP_REPORTER: 'nyan' }
+
+    // when
+    const actual = parseCliOptions(env)(['--agent'])
+
+    // then
+    expect(actual).toEqual({
+      status: 'ok',
+      data: {
+        mode: 'run',
+        reporter: 'agent',
+        colorMode: 'auto',
+        coverageThresholdPct: undefined,
+        coverageReport: 'summary',
+      },
+    })
+  },
+)
+
+test(
+  [
+    'given an unknown BUNTAP_REPORTER value and no reporter flag',
+    'when parsed',
+    'it should return a usage error naming the value',
+  ].join(', '),
+  () => {
+    // given
+    const env = { BUNTAP_REPORTER: 'foo' }
+
+    // when
+    const actual = parseCliOptions(env)([])
+
+    // then
+    expect(actual).toEqual({
+      status: 'error',
+      error: "invalid BUNTAP_REPORTER value 'foo'",
+    })
+  },
+)
+
+test(
+  [
+    'given an unknown BUNTAP_REPORTER value and a reporter flag',
+    'when parsed',
+    'it should ignore the environment and use the flag',
+  ].join(', '),
+  () => {
+    // given
+    const env = { BUNTAP_REPORTER: 'foo' }
+
+    // when
+    const actual = parseCliOptions(env)(['--block'])
+
+    // then
+    expect(actual).toEqual({
+      status: 'ok',
+      data: {
+        mode: 'run',
+        reporter: 'block',
+        colorMode: 'auto',
+        coverageThresholdPct: undefined,
+        coverageReport: 'bar',
+      },
+    })
+  },
+)
+
+test(
+  [
+    'given an empty BUNTAP_REPORTER',
+    'when parsed',
+    'it should treat it as unset and default to tap',
+  ].join(', '),
+  () => {
+    // given
+    const env = { BUNTAP_REPORTER: '' }
+
+    // when
+    const actual = parseCliOptions(env)([])
+
+    // then
+    expect(actual).toEqual({
+      status: 'ok',
+      data: {
+        mode: 'run',
+        reporter: 'tap',
+        colorMode: 'auto',
+        coverageThresholdPct: undefined,
+        coverageReport: 'full',
+      },
+    })
+  },
+)
+
+test(
+  [
+    'given BUNTAP_REPORTER=tap and --coverage-report=summary',
+    'when parsed',
+    'it should return the tap-pinned usage error',
+  ].join(', '),
+  () => {
+    // given
+    const env = { BUNTAP_REPORTER: 'tap' }
+
+    // when
+    const actual = parseCliOptions(env)(['--coverage-report=summary'])
+
+    // then
+    expect(actual).toEqual({
+      status: 'error',
+      error: 'the tap reporter always reports coverage in full',
+    })
+  },
+)

@@ -589,6 +589,14 @@ var REPORTER_FLAGS = {
   "--block": "block",
   "--agent": "agent"
 };
+var REPORTER_ENV_VAR = "BUNTAP_REPORTER";
+var REPORTER_NAMES = new Set([
+  "tap",
+  "nyan",
+  "markdown",
+  "block",
+  "agent"
+]);
 var KNOWN_FLAGS = new Set([
   ...Object.keys(REPORTER_FLAGS),
   "--color",
@@ -641,7 +649,20 @@ var parseCoverageThresholdFlag = (argv) => {
   }
   return { status: "ok", data: { functionsPct: pct, linesPct: pct } };
 };
-var parseCliOptions = (argv) => {
+var parseReporterEnv = (env) => {
+  const value = env[REPORTER_ENV_VAR];
+  if (value === undefined || value === "") {
+    return { status: "ok", data: undefined };
+  }
+  if (REPORTER_NAMES.has(value)) {
+    return { status: "ok", data: value };
+  }
+  return {
+    status: "error",
+    error: `invalid ${REPORTER_ENV_VAR} value '${value}'`
+  };
+};
+var parseCliOptions = (env) => (argv) => {
   const unknown = argv.find((flag) => !isKnownFlag(flag));
   if (unknown !== undefined) {
     return { status: "error", error: `unknown flag '${unknown}'` };
@@ -664,7 +685,12 @@ var parseCliOptions = (argv) => {
     return { status: "error", error: "only one reporter flag may be given" };
   }
   const colorMode = argv.includes("--color") ? "on" : argv.includes("--no-color") ? "off" : "auto";
-  const reporter = distinctReporters[0] ?? "tap";
+  const flagReporter = distinctReporters[0];
+  const envReporter = flagReporter === undefined ? parseReporterEnv(env) : { status: "ok", data: undefined };
+  if (envReporter.status === "error") {
+    return { status: "error", error: envReporter.error };
+  }
+  const reporter = flagReporter ?? envReporter.data ?? "tap";
   if (reporter === "tap" && coverageReport.data !== undefined && coverageReport.data !== "full") {
     return {
       status: "error",
@@ -1673,6 +1699,12 @@ Options:
   --help        print this help and exit
   --version     print the version and exit
 
+Environment:
+  BUNTAP_REPORTER=<name>  reporter to use when no reporter flag is given:
+                          tap, nyan, markdown, block, or agent; a reporter
+                          flag takes precedence. Set it on buntap, not bunt:
+                          bunt | BUNTAP_REPORTER=nyan buntap
+
 bun writes test results to stderr, not stdout — pipe with 2>&1.
 Only bun's default console reporter is parsed; --reporter=junit, --dots,
 and --only-failures output are not supported.
@@ -1696,7 +1728,7 @@ var resolveThreshold = (deps, flagThresholdPct) => {
 ` } : { thresholdPct: parsed.data, warning: undefined };
 };
 var main = (deps) => async (argv) => {
-  const options = parseCliOptions(argv);
+  const options = parseCliOptions(deps.env)(argv);
   if (options.status === "error") {
     deps.writeError(`buntap: ${options.error}
 

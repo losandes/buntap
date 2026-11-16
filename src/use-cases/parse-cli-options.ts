@@ -15,6 +15,18 @@ const REPORTER_FLAGS: Readonly<Record<string, TReporterName>> = {
   '--agent': 'agent',
 }
 
+const REPORTER_ENV_VAR = 'BUNTAP_REPORTER'
+
+const REPORTER_NAMES: ReadonlySet<TReporterName> = new Set([
+  'tap',
+  'nyan',
+  'markdown',
+  'block',
+  'agent',
+])
+
+export type TCliEnv = Readonly<Record<string, string | undefined>>
+
 const KNOWN_FLAGS = new Set([
   ...Object.keys(REPORTER_FLAGS),
   '--color',
@@ -93,67 +105,98 @@ const parseCoverageThresholdFlag = (
   return { status: 'ok', data: { functionsPct: pct, linesPct: pct } }
 }
 
-/** Pure argv parser: never throws, returns a settlement so the driver decides what to do with a usage error. */
-export const parseCliOptions = (
-  argv: readonly string[],
-): TSettlement<TCliOptions, string> => {
-  const unknown = argv.find((flag) => !isKnownFlag(flag))
-  if (unknown !== undefined) {
-    return { status: 'error', error: `unknown flag '${unknown}'` }
+/**
+ * `BUNTAP_REPORTER` names a reporter when no reporter flag does; unset or
+ * empty means no choice. Only consulted when no reporter flag was given, so
+ * an invalid value never blocks a flag that supersedes it.
+ */
+const parseReporterEnv = (
+  env: TCliEnv,
+): TSettlement<TReporterName | undefined, string> => {
+  const value = env[REPORTER_ENV_VAR]
+  if (value === undefined || value === '') {
+    return { status: 'ok', data: undefined }
   }
-
-  const coverageThreshold = parseCoverageThresholdFlag(argv)
-  if (coverageThreshold.status === 'error') {
-    return { status: 'error', error: coverageThreshold.error }
+  if (REPORTER_NAMES.has(value as TReporterName)) {
+    return { status: 'ok', data: value as TReporterName }
   }
-
-  const coverageReport = parseCoverageReportFlag(argv)
-  if (coverageReport.status === 'error') {
-    return { status: 'error', error: coverageReport.error }
-  }
-
-  if (argv.includes('--help')) return { status: 'ok', data: { mode: 'help' } }
-  if (argv.includes('--version'))
-    return { status: 'ok', data: { mode: 'version' } }
-
-  const reporters = argv
-    .map((flag) => REPORTER_FLAGS[flag])
-    .filter((reporter): reporter is TReporterName => reporter !== undefined)
-  const distinctReporters = [...new Set(reporters)]
-  if (distinctReporters.length > 1) {
-    return { status: 'error', error: 'only one reporter flag may be given' }
-  }
-
-  const colorMode: TColorMode = argv.includes('--color')
-    ? 'on'
-    : argv.includes('--no-color')
-      ? 'off'
-      : 'auto'
-
-  const reporter = distinctReporters[0] ?? 'tap'
-
-  // §1.1.4: the tap reporter always reports coverage in full; any other
-  // explicit mode given alongside it is a usage error rather than silently
-  // discarded.
-  if (
-    reporter === 'tap' &&
-    coverageReport.data !== undefined &&
-    coverageReport.data !== 'full'
-  ) {
-    return {
-      status: 'error',
-      error: 'the tap reporter always reports coverage in full',
-    }
-  }
-
   return {
-    status: 'ok',
-    data: {
-      mode: 'run',
-      reporter,
-      colorMode,
-      coverageThresholdPct: coverageThreshold.data,
-      coverageReport: coverageReport.data ?? DEFAULT_COVERAGE_REPORT[reporter],
-    },
+    status: 'error',
+    error: `invalid ${REPORTER_ENV_VAR} value '${value}'`,
   }
 }
+
+/** Pure argv and environment parser: never throws, returns a settlement so the driver decides what to do with a usage error. A reporter flag supersedes `BUNTAP_REPORTER`. */
+export const parseCliOptions =
+  (env: TCliEnv) =>
+  (argv: readonly string[]): TSettlement<TCliOptions, string> => {
+    const unknown = argv.find((flag) => !isKnownFlag(flag))
+    if (unknown !== undefined) {
+      return { status: 'error', error: `unknown flag '${unknown}'` }
+    }
+
+    const coverageThreshold = parseCoverageThresholdFlag(argv)
+    if (coverageThreshold.status === 'error') {
+      return { status: 'error', error: coverageThreshold.error }
+    }
+
+    const coverageReport = parseCoverageReportFlag(argv)
+    if (coverageReport.status === 'error') {
+      return { status: 'error', error: coverageReport.error }
+    }
+
+    if (argv.includes('--help')) return { status: 'ok', data: { mode: 'help' } }
+    if (argv.includes('--version'))
+      return { status: 'ok', data: { mode: 'version' } }
+
+    const reporters = argv
+      .map((flag) => REPORTER_FLAGS[flag])
+      .filter((reporter): reporter is TReporterName => reporter !== undefined)
+    const distinctReporters = [...new Set(reporters)]
+    if (distinctReporters.length > 1) {
+      return { status: 'error', error: 'only one reporter flag may be given' }
+    }
+
+    const colorMode: TColorMode = argv.includes('--color')
+      ? 'on'
+      : argv.includes('--no-color')
+        ? 'off'
+        : 'auto'
+
+    const flagReporter = distinctReporters[0]
+    const envReporter =
+      flagReporter === undefined
+        ? parseReporterEnv(env)
+        : ({ status: 'ok', data: undefined } as const)
+    if (envReporter.status === 'error') {
+      return { status: 'error', error: envReporter.error }
+    }
+
+    const reporter = flagReporter ?? envReporter.data ?? 'tap'
+
+    // §1.1.4: the tap reporter always reports coverage in full; any other
+    // explicit mode given alongside it is a usage error rather than silently
+    // discarded.
+    if (
+      reporter === 'tap' &&
+      coverageReport.data !== undefined &&
+      coverageReport.data !== 'full'
+    ) {
+      return {
+        status: 'error',
+        error: 'the tap reporter always reports coverage in full',
+      }
+    }
+
+    return {
+      status: 'ok',
+      data: {
+        mode: 'run',
+        reporter,
+        colorMode,
+        coverageThresholdPct: coverageThreshold.data,
+        coverageReport:
+          coverageReport.data ?? DEFAULT_COVERAGE_REPORT[reporter],
+      },
+    }
+  }

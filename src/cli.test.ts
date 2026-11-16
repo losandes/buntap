@@ -320,6 +320,49 @@ test(
 
 test(
   [
+    'given BUNTAP_REPORTER=markdown',
+    'when run with no flags',
+    'it should use the markdown reporter instead of TAP',
+  ].join(', '),
+  async () => {
+    // given
+    const { deps, stdout } = makeDeps(mixedResultsFixture)
+
+    // when
+    const code = await main({ ...deps, env: { BUNTAP_REPORTER: 'markdown' } })(
+      [],
+    )
+
+    // then
+    expect(stdout()).toContain('# Tests')
+    expect(stdout()).not.toContain('TAP version 14')
+    expect(code).toBe(1)
+  },
+)
+
+test(
+  [
+    'given an unknown BUNTAP_REPORTER value',
+    'when run with no flags',
+    'it should print usage on stderr and exit 2',
+  ].join(', '),
+  async () => {
+    // given
+    const { deps, stdout, stderr } = makeDeps(mixedResultsFixture)
+
+    // when
+    const code = await main({ ...deps, env: { BUNTAP_REPORTER: 'foo' } })([])
+
+    // then
+    expect(code).toBe(2)
+    expect(stdout()).toBe('')
+    expect(stderr()).toContain("invalid BUNTAP_REPORTER value 'foo'")
+    expect(stderr()).toContain('Usage:')
+  },
+)
+
+test(
+  [
     'given the tap reporter',
     'when colour is forced on',
     'it should still never emit ANSI escape codes',

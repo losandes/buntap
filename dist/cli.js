@@ -35,6 +35,12 @@ Options:
   --help        print this help and exit
   --version     print the version and exit
 
+Environment:
+  BUNTAP_REPORTER=<name>  reporter to use when no reporter flag is given:
+                          tap, nyan, markdown, block, or agent; a reporter
+                          flag takes precedence. Set it on buntap, not bunt:
+                          bunt | BUNTAP_REPORTER=nyan buntap
+
 bun writes test results to stderr, not stdout — pipe with 2>&1.
 Only bun's default console reporter is parsed; --reporter=junit, --dots,
 and --only-failures output are not supported.
@@ -60,7 +66,7 @@ const resolveThreshold = (deps, flagThresholdPct) => {
         : { thresholdPct: parsed.data, warning: undefined };
 };
 export const main = (deps) => async (argv) => {
-    const options = parseCliOptions(argv);
+    const options = parseCliOptions(deps.env)(argv);
     if (options.status === 'error') {
         deps.writeError(`buntap: ${options.error}\n\n${HELP}`);
         return 2;
