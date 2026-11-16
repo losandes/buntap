@@ -199,6 +199,23 @@ Nothing for a passing test. For a failure: the file, the full test name, and the
 
 Giving two reporter flags together, or any flag not listed above, is an error: `buntap` prints usage to stderr and exits `2` rather than silently ignoring it. Colour is otherwise on only when stdout is a TTY and `NO_COLOR` is unset.
 
+## Environment variables
+
+| Variable                 | Effect                                                                                                                           |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| `BUNTAP_REPORTER=<name>` | reporter to use when no reporter flag is given: `tap`, `nyan`, `markdown`, `block`, or `agent`; a reporter flag takes precedence |
+| `NO_COLOR`               | turn colour off when neither `--color` nor `--no-color` is given                                                                 |
+
+An empty `BUNTAP_REPORTER` is treated as unset. Any other unrecognised value is a usage error (exit `2`), unless a reporter flag is also given, in which case the variable is ignored.
+
+`buntap` reads the variable, not `bunt`, and an inline assignment applies only to the command it precedes. Put it in front of `buntap`, or export it:
+
+```bash
+bunt | BUNTAP_REPORTER=nyan buntap   # works
+export BUNTAP_REPORTER=nyan          # works for every run in this shell
+BUNTAP_REPORTER=nyan bunt | buntap   # does not work: only bunt sees it
+```
+
 ## Exit codes
 
 | Code | Meaning                                                               |
