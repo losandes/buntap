@@ -310,27 +310,35 @@ export const finalizeParse = (state: TParseState): readonly TRunEvent[] => {
 }
 
 /**
- * The only stream-level recursion in the parser: each call awaits exactly one
- * line, threads the immutable state produced by `stepLine` into the next
- * call, and stops once a `run-end` event has been produced — which guarantees
- * run-end is emitted exactly once and is always last (§2.2).
+ * The parser's stream fold: each line advances the immutable state produced
+ * by `stepLine`, and the fold stops once a `run-end` event has been produced —
+ * which guarantees run-end is emitted exactly once and is always last (§2.2).
+ *
+ * The `let state` is deliberate. This was previously a `yield*` recursion,
+ * one nested async generator per input line, and every value then had to be
+ * delegated back up through that whole chain: a run of a few thousand lines
+ * overflowed the call stack ("Maximum call stack size exceeded"). The
+ * reassignment is confined to this loop; every state value is still built
+ * immutably by `stepLine`.
+ *
+ * The iterator is driven by hand rather than with `for await`, so stopping at
+ * run-end does not call `return()` on the source: as before, whatever follows
+ * the summary is left unread rather than torn down.
  */
-async function* consume(
-  state: TParseState,
-  iterator: AsyncIterator<string>,
+export async function* parseRun(
+  lines: Readonly<AsyncIterable<string>>,
 ): AsyncGenerator<TRunEvent> {
-  const next = await iterator.next()
-  if (next.done === true) {
-    yield* finalizeParse(state)
-    return
+  const iterator = lines[Symbol.asyncIterator]()
+  let state = initialParseState
+  while (true) {
+    const next = await iterator.next()
+    if (next.done === true) {
+      yield* finalizeParse(state)
+      return
+    }
+    const step = stepLine(state, next.value)
+    yield* step.events
+    if (step.events.some((event) => event.type === 'run-end')) return
+    state = step.state
   }
-  const { state: nextState, events } = stepLine(state, next.value)
-  yield* events
-  if (events.some((event) => event.type === 'run-end')) return
-  yield* consume(nextState, iterator)
 }
-
-export const parseRun = (
-  lines: AsyncIterable<string>,
-): AsyncGenerator<TRunEvent> =>
-  consume(initialParseState, lines[Symbol.asyncIterator]())
