@@ -31,5 +31,9 @@ export type TClassifiedLine = Readonly<{
 }> | Readonly<{
     kind: 'text';
     raw: string;
+}> | Readonly<{
+    kind: 'rollup-header';
+    status: TTestStatus;
+    count: number;
 }>;
 export declare const classifyLine: (line: string) => TClassifiedLine;

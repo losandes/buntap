@@ -6,6 +6,7 @@ export const initialParseState = {
     coverage: { active: false, lines: [] },
     unhandledError: { active: false, openSeen: false, lines: [] },
     totals: { pass: 0, fail: 0, skip: 0, todo: 0, errors: 0, expectCalls: 0 },
+    rollup: false,
 };
 const flushDiagnostics = (state) => state.diagnostics.length === 0
     ? { state, events: [] }
@@ -76,14 +77,7 @@ const stepUnhandledError = (state, line) => {
         events: [],
     };
 };
-/** One pure transition: the current state plus one raw input line in, the next state plus zero or more events out. */
-export const stepLine = (state, rawLine) => {
-    const line = stripAnsi(rawLine);
-    if (state.coverage.active)
-        return stepCoverage(state, line);
-    if (state.unhandledError.active)
-        return stepUnhandledError(state, line);
-    const classified = classifyLine(line);
+const stepClassified = (state, classified, line) => {
     switch (classified.kind) {
         case 'blank':
             return { state, events: [] };
@@ -181,7 +175,41 @@ export const stepLine = (state, rawLine) => {
                 state: { ...state, diagnostics: [...state.diagnostics, line] },
                 events: [],
             };
+        case 'rollup-header': {
+            const flushed = flushDiagnostics(state);
+            return {
+                state: { ...flushed.state, rollup: true },
+                events: flushed.events,
+            };
+        }
     }
+};
+/**
+ * One pure transition: the current state plus one raw input line in, the next
+ * state plus zero or more events out.
+ *
+ * Bun's console reporter reprints every skipped, todo, and failed result a
+ * second time in a trailing roll-up ("N tests skipped:" and friends) once a
+ * run is large enough. Those lines are restatements, not tests, so a result
+ * inside an open roll-up emits nothing; anything that is not blank and not
+ * another roll-up header closes the roll-up, so an unrecognised shape loses
+ * at most the restatements and never a real test.
+ */
+export const stepLine = (state, rawLine) => {
+    const line = stripAnsi(rawLine);
+    if (state.coverage.active)
+        return stepCoverage(state, line);
+    if (state.unhandledError.active)
+        return stepUnhandledError(state, line);
+    const classified = classifyLine(line);
+    if (state.rollup && classified.kind === 'result')
+        return { state, events: [] };
+    const stepped = stepClassified(state, classified, line);
+    return !stepped.state.rollup ||
+        classified.kind === 'blank' ||
+        classified.kind === 'rollup-header'
+        ? stepped
+        : { state: { ...stepped.state, rollup: false }, events: stepped.events };
 };
 const zeroTotals = {
     pass: 0,
@@ -217,22 +245,35 @@ export const finalizeParse = (state) => {
     ];
 };
 /**
- * The only stream-level recursion in the parser: each call awaits exactly one
- * line, threads the immutable state produced by `stepLine` into the next
- * call, and stops once a `run-end` event has been produced — which guarantees
- * run-end is emitted exactly once and is always last (§2.2).
+ * The parser's stream fold: each line advances the immutable state produced
+ * by `stepLine`, and the fold stops once a `run-end` event has been produced —
+ * which guarantees run-end is emitted exactly once and is always last (§2.2).
+ *
+ * The `let state` is deliberate. This was previously a `yield*` recursion,
+ * one nested async generator per input line, and every value then had to be
+ * delegated back up through that whole chain: a run of a few thousand lines
+ * overflowed the call stack ("Maximum call stack size exceeded"). The
+ * reassignment is confined to this loop; every state value is still built
+ * immutably by `stepLine`.
+ *
+ * The iterator is driven by hand rather than with `for await`, so stopping at
+ * run-end does not call `return()` on the source: as before, whatever follows
+ * the summary is left unread rather than torn down.
  */
-async function* consume(state, iterator) {
-    const next = await iterator.next();
-    if (next.done === true) {
-        yield* finalizeParse(state);
-        return;
+export async function* parseRun(lines) {
+    const iterator = lines[Symbol.asyncIterator]();
+    let state = initialParseState;
+    while (true) {
+        const next = await iterator.next();
+        if (next.done === true) {
+            yield* finalizeParse(state);
+            return;
+        }
+        const step = stepLine(state, next.value);
+        yield* step.events;
+        if (step.events.some((event) => event.type === 'run-end'))
+            return;
+        state = step.state;
     }
-    const { state: nextState, events } = stepLine(state, next.value);
-    yield* events;
-    if (events.some((event) => event.type === 'run-end'))
-        return;
-    yield* consume(nextState, iterator);
 }
-export const parseRun = (lines) => consume(initialParseState, lines[Symbol.asyncIterator]());
 //# sourceMappingURL=parse-run.js.map

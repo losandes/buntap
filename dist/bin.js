@@ -101,6 +101,12 @@ var COVERAGE_RULE = /^-{2,}\|/;
 var SUMMARY_STATUS_COUNT = /^ (\d+) (pass|fail|skip|todo|error)$/;
 var SUMMARY_EXPECT_COUNT = /^ (\d+) expect\(\) calls$/;
 var SUMMARY_RAN = /^Ran (\d+) tests? across (\d+) files?\.(?:\s+\[(\d+(?:\.\d+)?)(ms|s)\])?$/;
+var ROLLUP_HEADER = /^(\d+) tests? (skipped|todo|failed):$/;
+var ROLLUP_STATUS = {
+  skipped: "skip",
+  todo: "todo",
+  failed: "fail"
+};
 var toMs = (amount, unit) => unit === "s" ? Number(amount) * 1000 : Number(amount);
 var classifyLine = (line) => {
   if (line.trim().length === 0)
@@ -160,6 +166,15 @@ var classifyLine = (line) => {
       value: Number(expectCount[1])
     };
   }
+  const rollup = ROLLUP_HEADER.exec(line);
+  if (rollup) {
+    const [, count, word] = rollup;
+    return {
+      kind: "rollup-header",
+      status: ROLLUP_STATUS[word ?? ""] ?? "skip",
+      count: Number(count)
+    };
+  }
   return { kind: "text", raw: line };
 };
 
@@ -175,7 +190,8 @@ var initialParseState = {
   diagnostics: [],
   coverage: { active: false, lines: [] },
   unhandledError: { active: false, openSeen: false, lines: [] },
-  totals: { pass: 0, fail: 0, skip: 0, todo: 0, errors: 0, expectCalls: 0 }
+  totals: { pass: 0, fail: 0, skip: 0, todo: 0, errors: 0, expectCalls: 0 },
+  rollup: false
 };
 var flushDiagnostics = (state) => state.diagnostics.length === 0 ? { state, events: [] } : {
   state: { ...state, diagnostics: [] },
@@ -242,13 +258,7 @@ var stepUnhandledError = (state, line) => {
     events: []
   };
 };
-var stepLine = (state, rawLine) => {
-  const line = stripAnsi(rawLine);
-  if (state.coverage.active)
-    return stepCoverage(state, line);
-  if (state.unhandledError.active)
-    return stepUnhandledError(state, line);
-  const classified = classifyLine(line);
+var stepClassified = (state, classified, line) => {
   switch (classified.kind) {
     case "blank":
       return { state, events: [] };
@@ -346,7 +356,26 @@ var stepLine = (state, rawLine) => {
         state: { ...state, diagnostics: [...state.diagnostics, line] },
         events: []
       };
+    case "rollup-header": {
+      const flushed = flushDiagnostics(state);
+      return {
+        state: { ...flushed.state, rollup: true },
+        events: flushed.events
+      };
+    }
   }
+};
+var stepLine = (state, rawLine) => {
+  const line = stripAnsi(rawLine);
+  if (state.coverage.active)
+    return stepCoverage(state, line);
+  if (state.unhandledError.active)
+    return stepUnhandledError(state, line);
+  const classified = classifyLine(line);
+  if (state.rollup && classified.kind === "result")
+    return { state, events: [] };
+  const stepped = stepClassified(state, classified, line);
+  return !stepped.state.rollup || classified.kind === "blank" || classified.kind === "rollup-header" ? stepped : { state: { ...stepped.state, rollup: false }, events: stepped.events };
 };
 var zeroTotals = {
   pass: 0,
@@ -376,19 +405,22 @@ var finalizeParse = (state) => {
     { type: "run-end", totals: zeroTotals, summarySeen: false }
   ];
 };
-async function* consume(state, iterator) {
-  const next = await iterator.next();
-  if (next.done === true) {
-    yield* finalizeParse(state);
-    return;
+async function* parseRun(lines) {
+  const iterator = lines[Symbol.asyncIterator]();
+  let state = initialParseState;
+  while (true) {
+    const next = await iterator.next();
+    if (next.done === true) {
+      yield* finalizeParse(state);
+      return;
+    }
+    const step = stepLine(state, next.value);
+    yield* step.events;
+    if (step.events.some((event) => event.type === "run-end"))
+      return;
+    state = step.state;
   }
-  const { state: nextState, events } = stepLine(state, next.value);
-  yield* events;
-  if (events.some((event) => event.type === "run-end"))
-    return;
-  yield* consume(nextState, iterator);
 }
-var parseRun = (lines) => consume(initialParseState, lines[Symbol.asyncIterator]());
 
 // src/parse/peek-first-line.ts
 var toAsyncIterable = (buffered, iterator) => ({
@@ -402,7 +434,7 @@ var toAsyncIterable = (buffered, iterator) => ({
     };
   }
 });
-var consume2 = async (iterator, buffered) => {
+var consume = async (iterator, buffered) => {
   const next = await iterator.next();
   if (next.done === true) {
     return { firstLine: undefined, rest: toAsyncIterable(buffered, iterator) };
@@ -413,9 +445,9 @@ var consume2 = async (iterator, buffered) => {
       rest: toAsyncIterable([...buffered, next.value], iterator)
     };
   }
-  return consume2(iterator, [...buffered, next.value]);
+  return consume(iterator, [...buffered, next.value]);
 };
-var peekFirstNonEmptyLine = (lines) => consume2(lines[Symbol.asyncIterator](), []);
+var peekFirstNonEmptyLine = (lines) => consume(lines[Symbol.asyncIterator](), []);
 
 // src/protocol/parse-json-line.ts
 var parseJsonLine = (line) => {
@@ -1732,20 +1764,22 @@ ${HELP}`);
 };
 
 // src/parse/read-lines.ts
-var consume3 = async function* (carry, iterator) {
-  const next = await iterator.next();
-  if (next.done === true) {
-    if (carry.length > 0)
-      yield carry;
-    return;
+async function* readLines(input) {
+  const iterator = input[Symbol.asyncIterator]();
+  let carry = "";
+  while (true) {
+    const next = await iterator.next();
+    if (next.done === true) {
+      if (carry.length > 0)
+        yield carry;
+      return;
+    }
+    const text = carry + (typeof next.value === "string" ? next.value : next.value.toString("utf8"));
+    const lines = text.split(/\r\n|\n/);
+    yield* lines.slice(0, -1);
+    carry = lines.at(-1) ?? "";
   }
-  const text = carry + (typeof next.value === "string" ? next.value : next.value.toString("utf8"));
-  const lines = text.split(/\r\n|\n/);
-  const nextCarry = lines.at(-1) ?? "";
-  yield* lines.slice(0, -1);
-  yield* consume3(nextCarry, iterator);
-};
-var readLines = (input) => consume3("", input[Symbol.asyncIterator]());
+}
 
 // src/bin.ts
 var readTextFile = (path) => {

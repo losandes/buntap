@@ -6,6 +6,12 @@ const COVERAGE_RULE = /^-{2,}\|/;
 const SUMMARY_STATUS_COUNT = /^ (\d+) (pass|fail|skip|todo|error)$/;
 const SUMMARY_EXPECT_COUNT = /^ (\d+) expect\(\) calls$/;
 const SUMMARY_RAN = /^Ran (\d+) tests? across (\d+) files?\.(?:\s+\[(\d+(?:\.\d+)?)(ms|s)\])?$/;
+const ROLLUP_HEADER = /^(\d+) tests? (skipped|todo|failed):$/;
+const ROLLUP_STATUS = {
+    skipped: 'skip',
+    todo: 'todo',
+    failed: 'fail',
+};
 const toMs = (amount, unit) => unit === 's' ? Number(amount) * 1000 : Number(amount);
 export const classifyLine = (line) => {
     if (line.trim().length === 0)
@@ -65,6 +71,15 @@ export const classifyLine = (line) => {
             kind: 'summary-count',
             field: 'expectCalls',
             value: Number(expectCount[1]),
+        };
+    }
+    const rollup = ROLLUP_HEADER.exec(line);
+    if (rollup) {
+        const [, count, word] = rollup;
+        return {
+            kind: 'rollup-header',
+            status: ROLLUP_STATUS[word ?? ''] ?? 'skip',
+            count: Number(count),
         };
     }
     return { kind: 'text', raw: line };
