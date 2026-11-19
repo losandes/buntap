@@ -9,6 +9,10 @@
 # rejected at load. Review Activities can run concurrently because each
 # reads the completed changes and writes to a separate findings file.
 #
+# `import` is not an Activity. Named first in a Lifecycle's first Stage, it
+# brings the issue or document the request references into the handoff
+# directory before anything runs. See <pi-crust>/references/handoff.md.
+#
 # Local overrides: crust.lifecycles.local.yaml (gitignored).
 # Example: <pi-crust>/cookbooks/examples/crust.lifecycles.local.example.yaml
 
@@ -20,10 +24,13 @@ lifecycles:
     stages:
       - name: diagnose
         strategy: serial
-        activities: [diagnose]
+        activities: [diagnose, plan]
+      - name: review-plan
+        strategy: concurrent
+        activities: [plan-comprehension, plan-readiness]
       - name: deliver
         strategy: serial
-        activities: [plan, test-tdd, build]
+        activities: [build]
       - name: accept
         strategy: concurrent
         activities: [outcome-review, code-review]
@@ -43,13 +50,30 @@ lifecycles:
         strategy: serial
         activities: [plan, build]
 
-  - name: deliver
+  - name: gh-issue
     description: >-
-      The engineering lifecycle: build, test, and review.
+      Analyze a topic, plan the work, and open a github issue.
     stages:
+      - name: discover
+        strategy: serial
+        activities: [identify]
+      - name: file
+        strategy: serial
+        activities: [gh-issue]
+
+  - name: ship
+    description: >-
+      An e2e engineering lifecycle: identify, plan, build, and review.
+    stages:
+      - name: discover
+        strategy: serial
+        activities: [identify, plan]
+      - name: review-plan
+        strategy: concurrent
+        activities: [plan-comprehension, plan-readiness]
       - name: deliver
         strategy: serial
-        activities: [build, test]
+        activities: [build]
       - name: accept
         strategy: concurrent
         activities: [outcome-review, code-review]
@@ -57,32 +81,33 @@ lifecycles:
         strategy: serial
         activities: [gh-pull-request]
 
-  - name: discover
+  - name: ship-to-outcome
     description: >-
-      The product lifecycle: identify, conceptualize, plan.
+      An e2e engineering lifecycle to launch after you already identified the outcome: plan, build, and review.
     stages:
       - name: discover
         strategy: serial
-        activities: [identify, conceptualize, plan]
-
-  - name: gh-issue
-    description: >-
-      Analyze a topic, plan the work, and open a github issue.
-    stages:
-      - name: discover
-        strategy: serial
-        activities: [identify, plan, gh-issue]
-
-  - name: ship
-    description: >-
-      The engineering lifecycle: plan, build, and review.
-    stages:
-      - name: discover
-        strategy: serial
-        activities: [identify, plan]
+        activities: [plan]
+      - name: review-plan
+        strategy: concurrent
+        activities: [plan-comprehension, plan-readiness]
       - name: deliver
         strategy: serial
-        activities: [build, test]
+        activities: [build]
+      - name: accept
+        strategy: concurrent
+        activities: [outcome-review, code-review]
+      - name: push
+        strategy: serial
+        activities: [gh-pull-request]
+
+  - name: ship-to-plan
+    description: >-
+      An e2e engineering lifecycle to launch after you already identified the plan: import the work the request references, build, and review.
+    stages:
+      - name: deliver
+        strategy: serial
+        activities: [import, build]
       - name: accept
         strategy: concurrent
         activities: [outcome-review, code-review]

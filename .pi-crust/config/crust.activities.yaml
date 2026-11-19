@@ -1,6 +1,7 @@
 # Repository Activity roster. Lifecycles reference these definitions by name.
 # Entries may override the default agent configuration and specify:
 #   output   Required result schema; unknown names are rejected
+#   succession `supersedes` the prior work or `annotates` it alongside the history
 #   gates    Explicit validation steps; `checks` runs routing.checks
 #   input    `upstream` (default) or `changes` (this run's diff)
 #   attempts Maximum executions per Activity instance, including first (default: 2)
@@ -28,6 +29,7 @@ activities:
 
   - name: build
     output: buildOutput
+    succession: supersedes
     gates: [diffMatchesClaims, checks]
     attempts: 2  # includes first attempt
     commit: true
@@ -40,9 +42,8 @@ activities:
 
   - name: code-review
     output: reviewOutput
+    succession: annotates
     gates: [artifactsExist, verdictConsistent]
-    model: anthropic/claude-sonnet-5 # openai/gpt-5.6-terra
-    thinking: high
     color: indigo
     purpose: Judge the change against this repository's ratified conventions, through its own review skill.
     prompt_engineering:
@@ -53,6 +54,7 @@ activities:
   # Logical architecture only; technology selection belongs to design.
   - name: conceptualize
     output: conceptualizeOutput
+    succession: supersedes
     gates: [artifactsExist]
     color: cyan
     purpose: Decide what the solution must mean and do; choose no technology.
@@ -64,6 +66,7 @@ activities:
   # No live database access; prepares queries for human execution.
   - name: data-research
     output: researchOutput
+    succession: supersedes
     gates: [artifactsExist]
     color: violet
     purpose: Establish what the data can show, and what it cannot.
@@ -83,6 +86,7 @@ activities:
 
   - name: design
     output: designOutput
+    succession: supersedes
     gates: [artifactsExist]
     color: pink
     purpose: Give the logical architecture a physical shape here, observability included.
@@ -95,6 +99,7 @@ activities:
   # May add failing tests; adjust allowed test paths for this repository.
   - name: diagnose
     output: diagnosisOutput
+    succession: supersedes
     gates: [artifactsExist, reproductionSupported]
     color: purple
     purpose: Reproduce the reported behaviour and name its cause, with evidence.
@@ -111,10 +116,10 @@ activities:
 
   - name: document
     output: documentOutput
+    succession: supersedes
     gates: [artifactsExist, filesNonEmpty]
     input: changes  # this run’s diff
     commit: true
-    model: anthropic/claude-sonnet-5 # openai/gpt-5.6-luna
     color: blue
     purpose: Write up the change that was just made, from the diff; document only.
     prompt_engineering:
@@ -130,6 +135,7 @@ activities:
   # Distinguish established domain rules from local interpretations.
   - name: domain-research
     output: researchOutput
+    succession: supersedes
     gates: [artifactsExist]
     color: pink
     purpose: Model the domain and the rules that actually govern it.
@@ -150,6 +156,7 @@ activities:
   # Creates an external issue; the handoff records what was filed.
   - name: gh-issue
     output: ghIssueOutput
+    succession: annotates  # an issue describes the work; it does not replace it
     gates: [artifactsExist, filesNonEmpty, issueCreated]
     color: indigo
     purpose: Open one GitHub issue carrying the chain's findings; change nothing in the repository.
@@ -165,6 +172,7 @@ activities:
   # Define measurable outcomes, not implementation details.
   - name: identify
     output: identifyOutput
+    succession: supersedes
     gates: [artifactsExist]
     color: blue
     purpose: Turn a problem into an outcome with criteria anyone could check.
@@ -175,9 +183,8 @@ activities:
 
   - name: outcome-review
     output: reviewOutput
+    succession: annotates
     gates: [artifactsExist, verdictConsistent]
-    model: anthropic/claude-sonnet-5  # openai/gpt-5.6-terra
-    thinking: high
     color: lime
     purpose: Confirm that what was built is what was asked for; change nothing.
     prompt_engineering:
@@ -186,10 +193,10 @@ activities:
     writes: ['{handoff}/outcome_review.md']
 
   - name: plan
+    attempts: 3  # both reviewers must approve; the loop spends from here
     output: planOutput
+    succession: supersedes
     gates: [artifactsExist, filesNonEmpty]
-    model: anthropic/claude-opus-5 # fireworks/accounts/fireworks/models/kimi-k3
-    thinking: high
     color: violet
     purpose: Turn a request into a plan the builder can implement without asking questions.
     prompt_engineering:
@@ -203,8 +210,39 @@ activities:
       - read
       - write
 
+  # Reads the plan with no memory of the conversation that produced it, and
+  # no access to the repository: self-containment is what it tests.
+  - name: plan-comprehension
+    output: reviewOutput
+    gates: [artifactsExist, verdictConsistent]
+    color: cyan
+    purpose: Report whether the plan explains itself to a reader who has not seen this project; change nothing.
+    prompt_engineering:
+      system: prompt-engineering/plan-comprehension/system.md
+      user: prompt-engineering/plan-comprehension/user.md
+    writes: ['{handoff}/plan_comprehension.md']
+    tools:
+      - read
+      - write
+
+  # Judges the plan against the repository it will be executed in.
+  - name: plan-readiness
+    output: reviewOutput
+    gates: [artifactsExist, verdictConsistent]
+    color: cyan
+    purpose: Rule on whether the plan can be executed without deciding anything; change nothing.
+    prompt_engineering:
+      system: prompt-engineering/plan-readiness/system.md
+      user: prompt-engineering/plan-readiness/user.md
+    writes: ['{handoff}/plan_readiness.md']
+    tools:
+      - bash
+      - read
+      - write
+
   - name: scout
     output: scoutOutput
+    succession: supersedes
     gates: [artifactsExist]
     color: orange
     purpose: Find and report where things live; change nothing.
@@ -221,6 +259,7 @@ activities:
   # Distinguish demonstrated, plausible, and speculative risks.
   - name: security-research
     output: researchOutput
+    succession: supersedes
     gates: [artifactsExist]
     color: rose
     purpose: Establish how this could fail, be misused, or be attacked.
@@ -241,6 +280,7 @@ activities:
   # Treat repository code as primary evidence.
   - name: technical-research
     output: researchOutput
+    succession: supersedes
     gates: [artifactsExist]
     color: purple
     purpose: Establish what is technically true, feasible, and evidenced.
@@ -261,6 +301,7 @@ activities:
   # Author tests before implementation; `checks` is intentionally omitted.
   - name: test-tdd
     output: buildOutput
+    succession: supersedes
     gates: [diffMatchesClaims]  # tests expected to fail before build
     commit: true
     color: teal
@@ -279,6 +320,7 @@ activities:
   # Running test commands is a gate, not an Activity.
   - name: test
     output: buildOutput
+    succession: supersedes
     gates: [diffMatchesClaims, checks]
     commit: true
     color: teal
@@ -295,6 +337,7 @@ activities:
 
   - name: ux-design
     output: uxDesignOutput
+    succession: supersedes
     gates: [artifactsExist, filesNonEmpty]
     color: orange
     purpose: Specify an interface precisely enough to implement without inventing UX.
@@ -315,6 +358,7 @@ activities:
   # Distinguish user needs from proposed features.
   - name: ux-research
     output: researchOutput
+    succession: supersedes
     gates: [artifactsExist]
     color: cyan
     purpose: Establish what users need, experience, and struggle with.
@@ -385,5 +429,5 @@ terminal:
       - read
     delivery:
       remote: origin
-      base: latest
+      # base: <branch>  # optional; omit to use the repository's default branch
       draft: false

@@ -3,9 +3,22 @@
 # v1 supports Pi only; Claude Code support is planned for v2.
 defaults:
   coding_agent: pi
-  # Default model. Must be available in `pi --list-models`.
-  model: anthropic/claude-sonnet-5 # provider/id
-  thinking: medium                 # off | minimal | low | medium | high | xhigh | max
+  # Default model, written as provider/id and available in `pi --list-models`.
+  # Every entry in crust.activities.yaml names its own model, so this is the
+  # fallback for one added later without that decision being made. Haiku 5.5 at
+  # max effort is the cheapest rung on the measured cost-per-task frontier --
+  # 27.72 on FrontierCode 2.0 for $0.37 a task -- and it needs only an Anthropic
+  # key, which is what a fallback has to be: the setting most likely to work
+  # when nothing else has been thought about.
+  #
+  # Good alternative: openai/gpt-6.1-sol with thinking max. It scores 38.95 for
+  # $1.03 a task, the best score per dollar of any model measured, so it buys
+  # eleven points for sixty-six cents. It is not the default only because it
+  # resolves through OpenRouter, and a fallback that needs a second credential
+  # fails in the one place a fallback must not. Prefer it wherever OpenRouter is
+  # already a dependency.
+  model: anthropic/claude-haiku-5-5
+  thinking: max                    # off | minimal | low | medium | high | xhigh | max
   harness_engineering: []          # Pi extensions loaded with -e
   data_dir: "{primary_worktree}/.pi-crust/data"
 

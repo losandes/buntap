@@ -98,3 +98,6 @@ pids
 # crust runtime
 .pi-crust/data/
 .pi-crust/prompt-engineering/example/
+
+# crust runtime
+.pi-crust/config/*.local.yaml
