@@ -40,9 +40,31 @@ bun test 2>&1 | buntap --nyan
 
 **However**, loses bun's own exit code to the pipe: a shell reports only the last command's status, so a compile error, a missing test file, or bun being killed by a signal is indistinguishable from an empty run. That's why `bunt` exists: to normalize the test runner output into a document protocol.
 
-## `bunt` takes no args or flags
+## `bunt` arguments and paired coverage
 
-`bunt` takes no flags of its own: every argument is appended to `bun test` verbatim and in order, and none of them are inspected. There is consequently no `bunt --help` or `bunt --version`; `bun test` ignores both of those flags, so `bunt --version` simply runs your suite.
+Without `--paired`, every argument is appended to `bun test` verbatim and in order, and none of them are inspected. There is no `bunt --help` or `bunt --version`; `bun test` ignores both of those flags, so `bunt --version` simply runs your suite.
+
+`--paired` measures each source file using only its sibling test file, even when other tests exercise that source. Only pairs whose test files match the chosen filters contribute coverage; imported sources whose own tests are outside the run do not affect the gate. A pair is a sibling with `.test` removed before the final extension: `x.test.ts` measures `x.ts`, and `x.test.tsx` measures `x.tsx`. A test with no source sibling, or with another naming convention such as `.spec.`, contributes no coverage row. An existing source that its test never loads contributes a 0% row.
+
+```bash
+bunt --paired src/lib | buntap --agent
+bunt --paired --paired-concurrency=1 --timeout=10000 src/lib | buntap --agent
+bunt --paired src/lib | buntap --agent --coverage-threshold=90
+```
+
+`bunt` discovers the matched test files, runs each in its own `bun test --coverage` process, and emits one coverage table containing only the paired rows. `buntap` applies the existing threshold and exit-code precedence: a gap with all tests passing exits `3`; failing tests take precedence and exit `1`. Without a minimum, coverage is rendered but no file is a gap. Whole-run coverage without `--paired` is unchanged.
+
+`--paired-concurrency=<n>` limits concurrent test processes and defaults to the available CPU parallelism. Every occurrence must be a positive decimal integer (`1`, `2`, …); the last occurrence wins. In paired mode, arguments starting with `-` are bun flags, and all other arguments are discovery filters. Value-taking bun flags must therefore use `--flag=value`, not a separate value. `--coverage`, `--coverage-reporter…` and `--coverage-dir…` arguments are removed; per-file processes always receive `--coverage`.
+
+A bare `--`, `-t`, any `--test-name-pattern…` argument, or an invalid `--paired-concurrency=<n>` is a usage error in paired mode: `bunt` writes a diagnostic to stderr, spawns nothing, and exits `2`. Paired measurement always runs whole test files.
+
+### Paired-mode limits
+
+- Discovery evaluates each matched test file's top-level code once before the real runs; test hooks do not run during discovery.
+- Test files run in separate concurrent processes. Suites sharing a port or file across test files need `--paired-concurrency=1`.
+- `bunfig.toml` controls coverage output. Its settings can override coverage command-line flags. Keep `"text"` in `coverageReporter`: without it, bun emits no table and every pair is reported at 0%. A source excluded by `coveragePathIgnorePatterns` is likewise reported at 0%.
+- Concurrent processes overwrite a shared `lcov.info` when lcov output is configured; that file ends up containing one arbitrary test file's coverage, not the combined paired table.
+- Discovery recognises `*.test.*`, `*_test.*` and `*.spec.*` headers. Bun also matches `_test_` and `_spec_` filenames; a discovery count mismatch exits `2` rather than silently omitting them. Only `.test.` siblings are paired.
 
 ## Exit-code precedence (protocol mode only)
 

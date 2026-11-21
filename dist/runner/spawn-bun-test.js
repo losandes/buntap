@@ -1,13 +1,12 @@
 import { spawn } from 'node:child_process';
-/**
- * The one true edge of `bunt`: a real OS process. §1.1.1: every argument is
- * appended verbatim and in order; §1.1.2: none of them are inspected here.
- * Untestable the way `bin.ts` is untestable — proven at integration time by
- * stage 7, not by a unit test with a fake process.
- */
-export const spawnBunTest = (argv) => {
+export const spawnBunTest = (argv, options) => {
     const child = spawn('bun', ['test', ...argv], {
         stdio: ['inherit', 'pipe', 'pipe'],
+        ...(options === undefined
+            ? {}
+            : {
+                env: Object.fromEntries(Object.entries(process.env).filter(([key]) => !options.omitEnv.includes(key))),
+            }),
     });
     const exited = new Promise((resolve) => {
         child.on('exit', (code, signal) => resolve({ code, signal }));
