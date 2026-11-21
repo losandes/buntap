@@ -101,3 +101,6 @@ pids
 
 # crust runtime
 .pi-crust/config/*.local.yaml
+
+# crust runtime
+.pi-crust/prompts/example/

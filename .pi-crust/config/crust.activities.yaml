@@ -1,7 +1,6 @@
 # Repository Activity roster. Lifecycles reference these definitions by name.
 # Entries may override the default agent configuration and specify:
 #   output   Required result schema; unknown names are rejected
-#   succession `supersedes` the prior work or `annotates` it alongside the history
 #   gates    Explicit validation steps; `checks` runs routing.checks
 #   input    `upstream` (default) or `changes` (this run's diff)
 #   attempts Maximum executions per Activity instance, including first (default: 2)
@@ -33,22 +32,26 @@ activities:
     gates: [diffMatchesClaims, checks]
     attempts: 2  # includes first attempt
     commit: true
+    model: openai/gpt-6.1-sol
+    thinking: medium
     color: green
     purpose: Implement the plan exactly; report every changed file in the envelope.
-    prompt_engineering:
-      system: prompt-engineering/build/system.md
-      user: prompt-engineering/build/user.md
+    prompts:
+      system: prompts/build/system.md
+      user: prompts/build/user.md
     writes: ['*']  # except protected paths
 
   - name: code-review
     output: reviewOutput
     succession: annotates
     gates: [artifactsExist, verdictConsistent]
+    model: claude-code/claude-opus-5-5
+    thinking: medium
     color: indigo
     purpose: Judge the change against this repository's ratified conventions, through its own review skill.
-    prompt_engineering:
-      system: prompt-engineering/code-review/system.md
-      user: prompt-engineering/code-review/user.md
+    prompts:
+      system: prompts/code-review/system.md
+      user: prompts/code-review/user.md
     writes: ['{handoff}/code_review.md']
 
   # Logical architecture only; technology selection belongs to design.
@@ -56,11 +59,13 @@ activities:
     output: conceptualizeOutput
     succession: supersedes
     gates: [artifactsExist]
+    model: claude-code/claude-fable-5-2
+    thinking: high
     color: cyan
     purpose: Decide what the solution must mean and do; choose no technology.
-    prompt_engineering:
-      system: prompt-engineering/conceptualize/system.md
-      user: prompt-engineering/conceptualize/user.md
+    prompts:
+      system: prompts/conceptualize/system.md
+      user: prompts/conceptualize/user.md
     writes: ['{handoff}/conceptualize.md']
 
   # No live database access; prepares queries for human execution.
@@ -68,11 +73,13 @@ activities:
     output: researchOutput
     succession: supersedes
     gates: [artifactsExist]
+    model: claude-code/claude-fable-5-2
+    thinking: high
     color: violet
     purpose: Establish what the data can show, and what it cannot.
-    prompt_engineering:
-      system: prompt-engineering/data-research/system.md
-      user: prompt-engineering/data-research/user.md
+    prompts:
+      system: prompts/data-research/system.md
+      user: prompts/data-research/user.md
     writes: ['{handoff}/data-research.md']
     tools:
       - bash
@@ -88,11 +95,13 @@ activities:
     output: designOutput
     succession: supersedes
     gates: [artifactsExist]
+    model: claude-code/claude-fable-5-2
+    thinking: high
     color: pink
     purpose: Give the logical architecture a physical shape here, observability included.
-    prompt_engineering:
-      system: prompt-engineering/design/system.md
-      user: prompt-engineering/design/user.md
+    prompts:
+      system: prompts/design/system.md
+      user: prompts/design/user.md
     writes: ['{handoff}/design.md']
 
   # Reproduce and explain defects without implementing fixes.
@@ -101,11 +110,13 @@ activities:
     output: diagnosisOutput
     succession: supersedes
     gates: [artifactsExist, reproductionSupported]
+    model: claude-code/claude-opus-5-5
+    thinking: medium
     color: purple
     purpose: Reproduce the reported behaviour and name its cause, with evidence.
-    prompt_engineering:
-      system: prompt-engineering/diagnose/system.md
-      user: prompt-engineering/diagnose/user.md
+    prompts:
+      system: prompts/diagnose/system.md
+      user: prompts/diagnose/user.md
     writes:
       - "{handoff}/diagnosis.md"
       - "**/*.test.*"
@@ -120,11 +131,13 @@ activities:
     gates: [artifactsExist, filesNonEmpty]
     input: changes  # this run’s diff
     commit: true
+    model: openai/gpt-6.1-sol
+    thinking: low
     color: blue
     purpose: Write up the change that was just made, from the diff; document only.
-    prompt_engineering:
-      system: prompt-engineering/document/system.md
-      user: prompt-engineering/document/user.md
+    prompts:
+      system: prompts/document/system.md
+      user: prompts/document/user.md
     writes:
       - "{handoff}/document.md"
       - "**/adr/"
@@ -137,11 +150,13 @@ activities:
     output: researchOutput
     succession: supersedes
     gates: [artifactsExist]
+    model: claude-code/claude-fable-5-2
+    thinking: high
     color: pink
     purpose: Model the domain and the rules that actually govern it.
-    prompt_engineering:
-      system: prompt-engineering/domain-research/system.md
-      user: prompt-engineering/domain-research/user.md
+    prompts:
+      system: prompts/domain-research/system.md
+      user: prompts/domain-research/user.md
     writes: ['{handoff}/domain-research.md']
     tools:
       - bash
@@ -156,13 +171,15 @@ activities:
   # Creates an external issue; the handoff records what was filed.
   - name: gh-issue
     output: ghIssueOutput
-    succession: annotates  # an issue describes the work; it does not replace it
+    succession: annotates
     gates: [artifactsExist, filesNonEmpty, issueCreated]
+    model: openai/gpt-6.1-sol
+    thinking: low
     color: indigo
     purpose: Open one GitHub issue carrying the chain's findings; change nothing in the repository.
-    prompt_engineering:
-      system: prompt-engineering/gh-issue/system.md
-      user: prompt-engineering/gh-issue/user.md
+    prompts:
+      system: prompts/gh-issue/system.md
+      user: prompts/gh-issue/user.md
     writes: ['{handoff}/gh_issue.md']
     tools:
       - bash
@@ -174,34 +191,40 @@ activities:
     output: identifyOutput
     succession: supersedes
     gates: [artifactsExist]
+    model: claude-code/claude-fable-5-2
+    thinking: high
     color: blue
     purpose: Turn a problem into an outcome with criteria anyone could check.
-    prompt_engineering:
-      system: prompt-engineering/identify/system.md
-      user: prompt-engineering/identify/user.md
+    prompts:
+      system: prompts/identify/system.md
+      user: prompts/identify/user.md
     writes: ['{handoff}/identify.md']
 
   - name: outcome-review
     output: reviewOutput
     succession: annotates
     gates: [artifactsExist, verdictConsistent]
+    model: claude-code/claude-opus-5-5
+    thinking: medium
     color: lime
     purpose: Confirm that what was built is what was asked for; change nothing.
-    prompt_engineering:
-      system: prompt-engineering/outcome-review/system.md
-      user: prompt-engineering/outcome-review/user.md
+    prompts:
+      system: prompts/outcome-review/system.md
+      user: prompts/outcome-review/user.md
     writes: ['{handoff}/outcome_review.md']
 
   - name: plan
-    attempts: 3  # both reviewers must approve; the loop spends from here
+    attempts: 3
     output: planOutput
     succession: supersedes
     gates: [artifactsExist, filesNonEmpty]
+    model: claude-code/claude-fable-5-2
+    thinking: high
     color: violet
     purpose: Turn a request into a plan the builder can implement without asking questions.
-    prompt_engineering:
-      system: prompt-engineering/plan/system.md
-      user: prompt-engineering/plan/user.md
+    prompts:
+      system: prompts/plan/system.md
+      user: prompts/plan/user.md
     writes:
       - "{handoff}/plan.md"
     tools:
@@ -214,12 +237,15 @@ activities:
   # no access to the repository: self-containment is what it tests.
   - name: plan-comprehension
     output: reviewOutput
+    succession: annotates
     gates: [artifactsExist, verdictConsistent]
+    model: openai/gpt-6.1-sol
+    thinking: medium
     color: cyan
     purpose: Report whether the plan explains itself to a reader who has not seen this project; change nothing.
-    prompt_engineering:
-      system: prompt-engineering/plan-comprehension/system.md
-      user: prompt-engineering/plan-comprehension/user.md
+    prompts:
+      system: prompts/plan-comprehension/system.md
+      user: prompts/plan-comprehension/user.md
     writes: ['{handoff}/plan_comprehension.md']
     tools:
       - read
@@ -228,12 +254,15 @@ activities:
   # Judges the plan against the repository it will be executed in.
   - name: plan-readiness
     output: reviewOutput
+    succession: annotates
     gates: [artifactsExist, verdictConsistent]
+    model: openai/gpt-6.1-sol # claude-code/claude-opus-5
+    thinking: high
     color: cyan
     purpose: Rule on whether the plan can be executed without deciding anything; change nothing.
-    prompt_engineering:
-      system: prompt-engineering/plan-readiness/system.md
-      user: prompt-engineering/plan-readiness/user.md
+    prompts:
+      system: prompts/plan-readiness/system.md
+      user: prompts/plan-readiness/user.md
     writes: ['{handoff}/plan_readiness.md']
     tools:
       - bash
@@ -244,11 +273,13 @@ activities:
     output: scoutOutput
     succession: supersedes
     gates: [artifactsExist]
+    model: openai/gpt-6.1-sol
+    thinking: medium
     color: orange
     purpose: Find and report where things live; change nothing.
-    prompt_engineering:
-      system: prompt-engineering/scout/system.md
-      user: prompt-engineering/scout/user.md
+    prompts:
+      system: prompts/scout/system.md
+      user: prompts/scout/user.md
     writes: ['{handoff}/scout_findings.md']
     tools:
       - bash
@@ -261,11 +292,13 @@ activities:
     output: researchOutput
     succession: supersedes
     gates: [artifactsExist]
+    model: claude-code/claude-fable-5-2
+    thinking: high
     color: rose
     purpose: Establish how this could fail, be misused, or be attacked.
-    prompt_engineering:
-      system: prompt-engineering/security-research/system.md
-      user: prompt-engineering/security-research/user.md
+    prompts:
+      system: prompts/security-research/system.md
+      user: prompts/security-research/user.md
     writes: ['{handoff}/security-research.md']
     tools:
       - bash
@@ -282,11 +315,13 @@ activities:
     output: researchOutput
     succession: supersedes
     gates: [artifactsExist]
+    model: claude-code/claude-fable-5-2
+    thinking: high
     color: purple
     purpose: Establish what is technically true, feasible, and evidenced.
-    prompt_engineering:
-      system: prompt-engineering/technical-research/system.md
-      user: prompt-engineering/technical-research/user.md
+    prompts:
+      system: prompts/technical-research/system.md
+      user: prompts/technical-research/user.md
     writes: ['{handoff}/technical-research.md']
     tools:
       - bash
@@ -298,24 +333,6 @@ activities:
       - fetch_content
       - source_check
 
-  # Author tests before implementation; `checks` is intentionally omitted.
-  - name: test-tdd
-    output: buildOutput
-    succession: supersedes
-    gates: [diffMatchesClaims]  # tests expected to fail before build
-    commit: true
-    color: teal
-    purpose: Write the tests that would prove the request was implemented (before build); implement nothing else.
-    prompt_engineering:
-      system: prompt-engineering/test/system.md
-      user: prompt-engineering/test/user.md
-    writes:
-      - "**/*.test.ts"
-      - "**/*.test.tsx"
-      - "**/*.spec.ts"
-      - "**/__tests__/"
-      - "**/tests/"
-
   # Author tests after implementation; `checks` must pass.
   # Running test commands is a gate, not an Activity.
   - name: test
@@ -323,11 +340,13 @@ activities:
     succession: supersedes
     gates: [diffMatchesClaims, checks]
     commit: true
+    model: openai/gpt-6.1-sol
+    thinking: medium
     color: teal
     purpose: Write the tests that prove the request was implemented (after build); implement nothing else.
-    prompt_engineering:
-      system: prompt-engineering/test/system.md
-      user: prompt-engineering/test/user.md
+    prompts:
+      system: prompts/test/system.md
+      user: prompts/test/user.md
     writes:
       - "**/*.test.ts"
       - "**/*.test.tsx"
@@ -339,11 +358,13 @@ activities:
     output: uxDesignOutput
     succession: supersedes
     gates: [artifactsExist, filesNonEmpty]
+    model: claude-code/claude-fable-5-2
+    thinking: high
     color: orange
     purpose: Specify an interface precisely enough to implement without inventing UX.
-    prompt_engineering:
-      system: prompt-engineering/ux-design/system.md
-      user: prompt-engineering/ux-design/user.md
+    prompts:
+      system: prompts/ux-design/system.md
+      user: prompts/ux-design/user.md
     writes: ['{handoff}/ux-design.md']
     tools:
       - bash
@@ -360,11 +381,13 @@ activities:
     output: researchOutput
     succession: supersedes
     gates: [artifactsExist]
+    model: claude-code/claude-fable-5-2
+    thinking: high
     color: cyan
     purpose: Establish what users need, experience, and struggle with.
-    prompt_engineering:
-      system: prompt-engineering/ux-research/system.md
-      user: prompt-engineering/ux-research/user.md
+    prompts:
+      system: prompts/ux-research/system.md
+      user: prompts/ux-research/user.md
     writes: ['{handoff}/ux-research.md']
     tools:
       - bash
@@ -387,11 +410,13 @@ planners:
 
   # Select and execute the smallest suitable Activity chain.
   - name: operator
+    model: claude-code/claude-opus-5-5
+    thinking: medium
     color: amber
     purpose: Choose the smallest chain of Activities that can produce the outcome.
-    prompt_engineering:
-      system: prompt-engineering/operator/system.md
-      user: prompt-engineering/operator/user.md
+    prompts:
+      system: prompts/operator/system.md
+      user: prompts/operator/user.md
     writes: ['{handoff}/plan.md']
     tools:
       - read
@@ -399,11 +424,13 @@ planners:
 
   # Recommend an Activity chain without executing it.
   - name: triage
+    model: claude-code/claude-opus-5-5
+    thinking: medium
     color: amber
     purpose: Choose the smallest chain that can produce the outcome, and hand it back.
-    prompt_engineering:
-      system: prompt-engineering/triage/system.md
-      user: prompt-engineering/triage/user.md
+    prompts:
+      system: prompts/triage/system.md
+      user: prompts/triage/user.md
     writes: ['{handoff}/plan.md']
     tools:
       - read
@@ -419,15 +446,17 @@ terminal:
 
   # Harness handles GitHub operations; agent only drafts content.
   - name: gh-pull-request
+    model: openai/gpt-6.1-sol
+    thinking: low
     color: teal
     purpose: Push the run's branch and open or update one GitHub pull request describing it.
-    prompt_engineering:
-      system: prompt-engineering/gh-pull-request/system.md
-      user: prompt-engineering/gh-pull-request/user.md
+    prompts:
+      system: prompts/gh-pull-request/system.md
+      user: prompts/gh-pull-request/user.md
     writes: []  # agent is read-only
     tools:
       - read
     delivery:
       remote: origin
-      # base: <branch>  # optional; omit to use the repository's default branch
+      base: main
       draft: false
