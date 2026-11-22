@@ -1,5 +1,7 @@
 #!/usr/bin/env node
-import { runBunt } from './runner/bunt-runner.js'
+import { existsSync } from 'node:fs'
+import { availableParallelism } from 'node:os'
+import { buntMain } from './runner/bunt-main.js'
 import { spawnBunTest } from './runner/spawn-bun-test.js'
 
 // §1.1.9: a truncated pipe (`bunt | head`) ends in EPIPE, not a bug.
@@ -20,8 +22,12 @@ const onSignal = (handler: (signal: NodeJS.Signals) => void): (() => void) => {
   }
 }
 
-process.exitCode = await runBunt({
+process.exitCode = await buntMain({
   spawn: spawnBunTest,
   write: (chunk) => void process.stdout.write(chunk),
+  writeError: (chunk) => void process.stderr.write(chunk),
+  fileExists: existsSync,
+  now: Date.now,
+  defaultConcurrency: availableParallelism(),
   onSignal,
 })(process.argv.slice(2))

@@ -5,4 +5,7 @@ import type { TChildHandle } from './bunt-runner.js';
  * Untestable the way `bin.ts` is untestable — proven at integration time by
  * stage 7, not by a unit test with a fake process.
  */
-export declare const spawnBunTest: (argv: readonly string[]) => TChildHandle;
+export type TSpawnOptions = Readonly<{
+    omitEnv: readonly string[];
+}>;
+export declare const spawnBunTest: (argv: readonly string[], options?: TSpawnOptions) => TChildHandle;

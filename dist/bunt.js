@@ -1,5 +1,9 @@
 #!/usr/bin/env node
 
+// src/bunt.ts
+import { existsSync } from "node:fs";
+import { availableParallelism } from "node:os";
+
 // src/parse/classify-line.ts
 var BANNER = /^bun test v(\S+)(?:\s+\(([0-9a-fA-F]+)\))?$/;
 var FILE_HEADER = /^(\S+[._](?:test|spec)\.(?:ts|tsx|js|jsx|mts|cts|mjs|cjs)):$/;
@@ -393,11 +397,297 @@ var runBunt = (deps) => async (argv) => {
   return result.code ?? 1;
 };
 
+// src/lib/format-paired-coverage-table.ts
+var formatPairedCoverageTable = (rows) => {
+  if (rows.length === 0)
+    return [];
+  const width = Math.max("All files".length, ...rows.map((row) => row.file.length + 1));
+  const rule = `${"-".repeat(width + 1)}|---------|---------|-------------------`;
+  const pct = (value) => value.toFixed(2).padStart(7);
+  const means = rows.reduce((sum, row) => ({
+    functionsPct: sum.functionsPct + row.functionsPct,
+    linesPct: sum.linesPct + row.linesPct
+  }), { functionsPct: 0, linesPct: 0 });
+  return [
+    rule,
+    `${"File".padEnd(width)} | % Funcs | % Lines | Uncovered Line #s`,
+    rule,
+    `${"All files".padEnd(width)} | ${pct(means.functionsPct / rows.length)} | ${pct(means.linesPct / rows.length)} |`,
+    ...rows.map((row) => `${` ${row.file}`.padEnd(width)} | ${pct(row.functionsPct)} | ${pct(row.linesPct)} | ${row.uncovered.join(",")}`),
+    rule
+  ];
+};
+
+// src/parse/parse-coverage-table.ts
+var splitCells = (line) => line.split("|").map((cell) => cell.trim());
+var findHeaderIndex = (rows) => rows.findIndex((cells) => cells[0] === "File");
+var findAllFilesIndex = (rows, headerIndex) => rows.slice(headerIndex + 1).findIndex((cells) => cells[0] === "All files");
+var toUncovered = (cell) => (cell ?? "").split(",").map((part) => part.trim()).filter((part) => part.length > 0);
+var parseCoverageTable = (lines) => {
+  const rows = lines.map(splitCells);
+  const headerIndex = findHeaderIndex(rows);
+  if (headerIndex === -1)
+    return [];
+  const header = rows[headerIndex];
+  const funcsIndex = header.indexOf("% Funcs");
+  const linesIndex = header.indexOf("% Lines");
+  const uncoveredIndex = header.indexOf("Uncovered Line #s");
+  if (funcsIndex === -1 || linesIndex === -1)
+    return [];
+  const toRow = (cells) => {
+    const file = cells[0];
+    if (file === undefined || file === "" || file === "All files")
+      return;
+    const functionsPct = Number(cells[funcsIndex]);
+    const linesPct = Number(cells[linesIndex]);
+    if (!(Number.isFinite(functionsPct) && Number.isFinite(linesPct)))
+      return;
+    const uncovered = uncoveredIndex === -1 ? [] : toUncovered(cells[uncoveredIndex]);
+    return { file, functionsPct, linesPct, uncovered };
+  };
+  return rows.slice(headerIndex + 1).map(toRow).filter((row) => row !== undefined);
+};
+var parseCoverageTotals = (lines) => {
+  const rows = lines.map(splitCells);
+  const headerIndex = findHeaderIndex(rows);
+  if (headerIndex === -1)
+    return;
+  const header = rows[headerIndex];
+  const funcsIndex = header.indexOf("% Funcs");
+  const linesIndex = header.indexOf("% Lines");
+  if (funcsIndex === -1 || linesIndex === -1)
+    return;
+  const allFilesOffset = findAllFilesIndex(rows, headerIndex);
+  if (allFilesOffset === -1)
+    return;
+  const allFilesRow = rows[headerIndex + 1 + allFilesOffset];
+  const functionsPct = Number(allFilesRow[funcsIndex]);
+  const linesPct = Number(allFilesRow[linesIndex]);
+  if (!(Number.isFinite(functionsPct) && Number.isFinite(linesPct)))
+    return;
+  return { functionsPct, linesPct, files: parseCoverageTable(lines).length };
+};
+
+// src/parse/parse-discovered-files.ts
+var parseDiscoveredFiles = (lines) => {
+  const clean = lines.map(stripAnsi);
+  const files = [
+    ...new Set(clean.flatMap((line) => {
+      const classified = classifyLine(line);
+      return classified.kind === "file-header" ? [classified.path] : [];
+    }))
+  ];
+  const searched = clean.map((line) => /Searched (\d+) files?\b/.exec(line)).find((match) => match !== null);
+  if (searched && Number(searched[1]) !== files.length)
+    return {
+      status: "error",
+      error: `could not list the test files bun matched (bun searched ${searched[1]}, bunt recognised ${files.length})`
+    };
+  return { status: "ok", data: files };
+};
+
+// src/runner/map-with-concurrency.ts
+var mapWithConcurrency = (limit) => (items, fn) => {
+  let lanes = Array.from({ length: Math.min(items.length, Math.max(1, limit)) }, () => Promise.resolve());
+  return items.map((item, index) => {
+    const lane = index % lanes.length;
+    const result = (lanes[lane] ?? Promise.resolve()).then(() => fn(item));
+    lanes = lanes.with(lane, result.then(() => {
+      return;
+    }, () => {
+      return;
+    }));
+    return result;
+  });
+};
+
+// src/runner/to-paired-source-path.ts
+var toPairedSourcePath = (testPath) => /\.test\.[^./]+$/.test(testPath) ? testPath.replace(/\.test(\.[^./]+)$/, "$1") : undefined;
+
+// src/runner/paired-runner.ts
+var zeroTotals2 = {
+  pass: 0,
+  fail: 0,
+  skip: 0,
+  todo: 0,
+  errors: 0,
+  expectCalls: 0,
+  tests: 0,
+  files: 0,
+  durationMs: undefined
+};
+var sumTotals = (totals, next) => ({
+  pass: totals.pass + next.pass,
+  fail: totals.fail + next.fail,
+  skip: totals.skip + next.skip,
+  todo: totals.todo + next.todo,
+  errors: totals.errors + next.errors,
+  expectCalls: totals.expectCalls + next.expectCalls,
+  tests: totals.tests + next.tests,
+  files: totals.files + next.files,
+  durationMs: undefined
+});
+var runPaired = (deps) => async (args) => {
+  const started = deps.now();
+  deps.write(encodeRunnerStart(args.argv));
+  let live = [];
+  let receivedSignal;
+  const discovery = deps.spawn([...args.flags, ...args.filters, "--test-name-pattern=(?!)"], { omitEnv: ["CLAUDECODE", "AGENT", "REPL_ID"] });
+  live = [discovery];
+  const unregister = deps.onSignal((signal) => {
+    receivedSignal = signal;
+    live.forEach((child) => {
+      child.kill(signal);
+    });
+  });
+  try {
+    const discoveryLines = await Array.fromAsync(readLines(mergeAsyncIterables([discovery.stdout, discovery.stderr])));
+    const discoveryResult = await discovery.exited;
+    live = [];
+    const discovered = parseDiscoveredFiles(discoveryLines);
+    if (discovered.status === "error") {
+      deps.writeError(`bunt: ${discovered.error}
+`);
+      deps.write(encodeRunnerExit(2, null));
+      return 2;
+    }
+    if (discovered.data.length === 0) {
+      deps.writeError(`bunt: no test files matched
+${discoveryLines.join(`
+`)}
+`);
+      const code = discoveryResult.signal === null ? discoveryResult.code || 1 : discoveryResult.code;
+      deps.write(encodeRunnerExit(code, discoveryResult.signal));
+      return code ?? 1;
+    }
+    const runFile = async (file) => {
+      if (receivedSignal !== undefined)
+        return;
+      const child = deps.spawn([
+        ...args.flags,
+        "--coverage",
+        "--",
+        `./${file}`
+      ]);
+      live = [...live, child];
+      const events = await Array.fromAsync(parseRun(readLines(mergeAsyncIterables([child.stdout, child.stderr]))));
+      const result = await child.exited;
+      live = live.filter((handle) => handle !== child);
+      const summarySeen = events.some((event) => event.type === "run-end" && event.summarySeen);
+      const source = toPairedSourcePath(file);
+      const coverage = events.flatMap((event) => event.type === "passthrough" && event.kind === "coverage" ? event.lines : []);
+      const row = source !== undefined && deps.fileExists(source) && summarySeen ? parseCoverageTable(coverage).find((candidate) => candidate.file === source) ?? {
+        file: source,
+        functionsPct: 0,
+        linesPct: 0,
+        uncovered: []
+      } : undefined;
+      return { events, result, row, summarySeen };
+    };
+    const pending = mapWithConcurrency(args.concurrency ?? deps.defaultConcurrency)(discovered.data, runFile).map((promise) => Promise.allSettled([promise]));
+    let completed = [];
+    let bannerSeen = false;
+    for (const promise of pending) {
+      const outcomes = await promise;
+      completed = [...completed, ...outcomes];
+      const outcome = outcomes[0];
+      if (outcome?.status !== "fulfilled" || outcome.value === undefined)
+        continue;
+      const run = outcome.value;
+      for (const event of run.events) {
+        if (event.type === "run-end" || event.type === "passthrough" && event.kind === "coverage")
+          continue;
+        if (event.type === "run-start") {
+          if (bannerSeen)
+            continue;
+          bannerSeen = true;
+        }
+        deps.write(encodeRunEvent(event));
+      }
+    }
+    const failures = completed.flatMap((outcome) => outcome.status === "rejected" ? [outcome.reason] : []);
+    if (failures.length > 0)
+      throw new AggregateError(failures, `bunt: ${failures.length} test-file processes could not be collected`);
+    const runs = completed.flatMap((outcome) => outcome.status === "fulfilled" && outcome.value !== undefined ? [outcome.value] : []);
+    const rows = runs.flatMap((run) => run.row === undefined ? [] : [run.row]).toSorted((a, b) => a.file < b.file ? -1 : a.file > b.file ? 1 : 0);
+    if (rows.length > 0)
+      deps.write(encodeRunEvent({
+        type: "passthrough",
+        kind: "coverage",
+        lines: formatPairedCoverageTable(rows)
+      }));
+    const totals = {
+      ...runs.flatMap((run) => run.events.flatMap((event) => event.type === "run-end" ? [event.totals] : [])).reduce(sumTotals, zeroTotals2),
+      durationMs: deps.now() - started
+    };
+    deps.write(encodeRunEvent({
+      type: "run-end",
+      totals,
+      summarySeen: runs.every((run) => run.summarySeen)
+    }));
+    const signalled = runs.find((run) => run.result.signal !== null);
+    const incomplete = runs.find((run) => !run.summarySeen);
+    const signal = receivedSignal ?? signalled?.result.signal ?? null;
+    const code = signal !== null ? null : incomplete === undefined ? 0 : incomplete.result.code || 1;
+    deps.write(encodeRunnerExit(code, signal));
+    return code === null ? 1 : code !== 0 ? code : totals.fail + totals.errors > 0 ? 1 : 0;
+  } finally {
+    unregister();
+  }
+};
+
+// src/runner/parse-bunt-args.ts
+var usageError = (arg) => {
+  if (arg.startsWith("--paired-concurrency=")) {
+    const value = arg.slice("--paired-concurrency=".length);
+    if (!/^[1-9][0-9]*$/.test(value))
+      return `--paired-concurrency must be a positive integer, got "${value}"`;
+  }
+  if (arg === "--")
+    return "--paired does not support a bare --";
+  if (arg === "-t" || arg.startsWith("--test-name-pattern"))
+    return "--paired measures whole test files, so a test name pattern is not supported";
+  return;
+};
+var parseBuntArgs = (argv) => {
+  if (!argv.includes("--paired"))
+    return { status: "ok", data: { mode: "passthrough", argv } };
+  const error = argv.map(usageError).find((message) => message !== undefined);
+  if (error !== undefined)
+    return { status: "error", error };
+  const remaining = argv.filter((arg) => arg !== "--paired" && !arg.startsWith("--paired-concurrency="));
+  const concurrencyArg = argv.findLast((arg) => arg.startsWith("--paired-concurrency="));
+  return {
+    status: "ok",
+    data: {
+      mode: "paired",
+      argv,
+      concurrency: concurrencyArg === undefined ? undefined : Number(concurrencyArg.slice("--paired-concurrency=".length)),
+      filters: remaining.filter((arg) => !arg.startsWith("-")),
+      flags: remaining.filter((arg) => arg.startsWith("-") && arg !== "--coverage" && !arg.startsWith("--coverage-reporter") && !arg.startsWith("--coverage-dir"))
+    }
+  };
+};
+
+// src/runner/bunt-main.ts
+var buntMain = (deps) => (argv) => {
+  const parsed = parseBuntArgs(argv);
+  if (parsed.status === "error") {
+    deps.writeError(`bunt: ${parsed.error}
+`);
+    return Promise.resolve(2);
+  }
+  return parsed.data.mode === "paired" ? runPaired(deps)(parsed.data) : runBunt(deps)(parsed.data.argv);
+};
+
 // src/runner/spawn-bun-test.ts
 import { spawn } from "node:child_process";
-var spawnBunTest = (argv) => {
+var spawnBunTest = (argv, options) => {
   const child = spawn("bun", ["test", ...argv], {
-    stdio: ["inherit", "pipe", "pipe"]
+    stdio: ["inherit", "pipe", "pipe"],
+    ...options === undefined ? {} : {
+      env: Object.fromEntries(Object.entries(process.env).filter(([key]) => !options.omitEnv.includes(key)))
+    }
   });
   const exited = new Promise((resolve) => {
     child.on("exit", (code, signal) => resolve({ code, signal }));
@@ -426,8 +716,12 @@ var onSignal = (handler) => {
     process.off("SIGTERM", forward);
   };
 };
-process.exitCode = await runBunt({
+process.exitCode = await buntMain({
   spawn: spawnBunTest,
   write: (chunk) => void process.stdout.write(chunk),
+  writeError: (chunk) => void process.stderr.write(chunk),
+  fileExists: existsSync,
+  now: Date.now,
+  defaultConcurrency: availableParallelism(),
   onSignal
 })(process.argv.slice(2));
