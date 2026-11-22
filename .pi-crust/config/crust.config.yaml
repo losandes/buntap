@@ -19,7 +19,6 @@ defaults:
   # already a dependency.
   model: anthropic/claude-haiku-5-5
   thinking: max                    # off | minimal | low | medium | high | xhigh | max
-  harness_engineering: []          # Pi extensions loaded with -e
   data_dir: "{primary_worktree}/.pi-crust/data"
 
   # Default tool allowlist. Agents may override it.
