@@ -3,6 +3,24 @@
 // src/bin.ts
 import { readFileSync } from "node:fs";
 
+// src/lib/format-paired-unresolved.ts
+var formatPairedUnresolved = (untested, unmatched) => {
+  const blocks = [
+    ...untested.length === 0 ? [] : [
+      `buntap: ${untested.length} ${untested.length === 1 ? "source has" : "sources have"} no tests:`,
+      ...untested.map((path) => `  ${path}`)
+    ],
+    ...unmatched.length === 0 ? [] : [
+      `buntap: ${unmatched.length} argument${unmatched.length === 1 ? "" : "s"} matched no tests:`,
+      ...unmatched.map((path) => `  ${path}`)
+    ]
+  ];
+  return blocks.length === 0 ? "" : `
+${blocks.join(`
+`)}
+`;
+};
+
 // src/lib/to-threshold-pct.ts
 var toThresholdPct = (value) => {
   if (!Number.isFinite(value))
@@ -481,6 +499,8 @@ var isWellFormed = (value) => {
   switch (value.type) {
     case "runner-start":
       return isStringArray(value.argv);
+    case "paired-unresolved":
+      return isStringArray(value.untested) && isStringArray(value.unmatched);
     case "runner-exit":
       return isNullableNumber(value.code) && isNullableString(value.signal);
     case "run-start":
@@ -754,12 +774,21 @@ var signalToNumber = (signal) => {
 // src/use-cases/resolve-protocol-exit-code.ts
 var initialProtocolExitState = {
   exitState: initialExitState,
+  untested: [],
+  unmatched: [],
+  paired: false,
   totals: undefined,
   runnerExit: undefined
 };
 var nextProtocolExitState = (state, event) => {
   if (event.type === "runner-start")
-    return state;
+    return event.argv.includes("--paired") === state.paired ? state : { ...state, paired: event.argv.includes("--paired") };
+  if (event.type === "paired-unresolved")
+    return {
+      ...state,
+      untested: [...state.untested, ...event.untested],
+      unmatched: [...state.unmatched, ...event.unmatched]
+    };
   if (event.type === "runner-exit") {
     return {
       ...state,
@@ -778,6 +807,13 @@ var resolveProtocolVerdict = (state) => {
   if (state.exitState.sawFailure) {
     return { code: 1, message: `${pluralTests(fail)} failed` };
   }
+  if (state.untested.length > 0) {
+    const count = state.untested.length;
+    return {
+      code: 4,
+      message: `${count} ${count === 1 ? "source has" : "sources have"} no tests`
+    };
+  }
   if (state.exitState.coverageGateFailed) {
     return { code: 3, message: "coverage below the configured minimum" };
   }
@@ -791,7 +827,7 @@ var resolveProtocolVerdict = (state) => {
   }
   if (runnerExit !== undefined && runnerExit.code !== null && runnerExit.code !== 0) {
     return {
-      code: runnerExit.code,
+      code: state.paired && runnerExit.code === 4 ? 2 : runnerExit.code,
       message: `bun exited ${runnerExit.code} before reporting any tests`
     };
   }
@@ -1764,9 +1800,7 @@ ${HELP}`);
       if (decoded.status === "error")
         continue;
       const event = decoded.data;
-      if (event.type === "runner-start")
-        continue;
-      if (event.type === "runner-exit") {
+      if (event.type === "runner-start" || event.type === "runner-exit" || event.type === "paired-unresolved") {
         protocolState = nextProtocolExitState(protocolState, event);
         continue;
       }
@@ -1776,6 +1810,7 @@ ${HELP}`);
       }
     }
     deps.write(reporter.end());
+    deps.writeError(formatPairedUnresolved(protocolState.untested, protocolState.unmatched));
     const verdict = resolveProtocolVerdict(protocolState);
     deps.writeError(renderVerdictLine(verdict));
     return verdict.code;

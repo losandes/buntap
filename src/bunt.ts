@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { availableParallelism } from 'node:os'
 import { buntMain } from './runner/bunt-main.js'
 import { spawnBunTest } from './runner/spawn-bun-test.js'
@@ -27,6 +27,36 @@ process.exitCode = await buntMain({
   write: (chunk) => void process.stdout.write(chunk),
   writeError: (chunk) => void process.stderr.write(chunk),
   fileExists: existsSync,
+  cwd: process.cwd(),
+  pathKind: (path) => {
+    // biome-ignore lint/plugin/no-intermediate-try-catch: this is that boundary
+    try {
+      const stat = statSync(path)
+      return stat.isFile()
+        ? 'file'
+        : stat.isDirectory()
+          ? 'directory'
+          : undefined
+    } catch {
+      return undefined
+    }
+  },
+  listDir: (dir) => {
+    // biome-ignore lint/plugin/no-intermediate-try-catch: this is that boundary
+    try {
+      return readdirSync(dir)
+    } catch {
+      return []
+    }
+  },
+  readTextFile: (path) => {
+    // biome-ignore lint/plugin/no-intermediate-try-catch: this is that boundary
+    try {
+      return readFileSync(path, 'utf8')
+    } catch {
+      return undefined
+    }
+  },
   now: Date.now,
   defaultConcurrency: availableParallelism(),
   onSignal,

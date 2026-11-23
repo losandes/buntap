@@ -4,6 +4,8 @@ const usageError = (arg) => {
         if (!/^[1-9][0-9]*$/.test(value))
             return `--paired-concurrency must be a positive integer, got "${value}"`;
     }
+    if (arg === '--paired-exempt' || arg === '--paired-exempt=')
+        return '--paired-exempt requires a glob, e.g. --paired-exempt=**/types.ts';
     if (arg === '--')
         return '--paired does not support a bare --';
     if (arg === '-t' || arg.startsWith('--test-name-pattern'))
@@ -16,7 +18,9 @@ export const parseBuntArgs = (argv) => {
     const error = argv.map(usageError).find((message) => message !== undefined);
     if (error !== undefined)
         return { status: 'error', error };
-    const remaining = argv.filter((arg) => arg !== '--paired' && !arg.startsWith('--paired-concurrency='));
+    const remaining = argv.filter((arg) => arg !== '--paired' &&
+        !arg.startsWith('--paired-concurrency=') &&
+        !arg.startsWith('--paired-exempt='));
     const concurrencyArg = argv.findLast((arg) => arg.startsWith('--paired-concurrency='));
     return {
         status: 'ok',
@@ -26,6 +30,9 @@ export const parseBuntArgs = (argv) => {
             concurrency: concurrencyArg === undefined
                 ? undefined
                 : Number(concurrencyArg.slice('--paired-concurrency='.length)),
+            exempt: argv
+                .filter((arg) => arg.startsWith('--paired-exempt='))
+                .map((arg) => arg.slice('--paired-exempt='.length)),
             filters: remaining.filter((arg) => !arg.startsWith('-')),
             flags: remaining.filter((arg) => arg.startsWith('-') &&
                 arg !== '--coverage' &&

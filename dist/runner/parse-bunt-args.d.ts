@@ -7,6 +7,7 @@ export type TBuntArgs = Readonly<{
     argv: readonly string[];
     flags: readonly string[];
     filters: readonly string[];
+    exempt: readonly string[];
     concurrency: number | undefined;
 }>;
 export declare const parseBuntArgs: (argv: readonly string[]) => TSettlement<TBuntArgs, string>;

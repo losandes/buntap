@@ -74,6 +74,10 @@ const setup = (
     },
     now: () => ticks++ * 10,
     fileExists: () => true,
+    cwd: '/fake',
+    pathKind: () => undefined,
+    listDir: () => [],
+    readTextFile: () => undefined,
     defaultConcurrency: 2,
     ...overrides,
   }
@@ -95,6 +99,7 @@ const args = {
   argv: ['--paired', 'src', '--timeout=5'],
   flags: ['--timeout=5'],
   filters: ['src'],
+  exempt: [],
   concurrency: undefined,
 }
 
@@ -296,6 +301,7 @@ for (const result of [
       )
       expect(harness.events()).toEqual([
         { v: 1, type: 'runner-start', argv: args.argv },
+        { v: 1, type: 'paired-unresolved', untested: [], unmatched: ['src'] },
         {
           v: 1,
           type: 'runner-exit',
@@ -330,6 +336,143 @@ test(
     ])
   },
 )
+
+for (const {
+  name,
+  sourceOnly,
+  pass,
+  untested,
+  discoveryCode,
+  signal,
+  expected,
+} of [
+  { name: 'empty discovery', expected: 1 },
+  { name: 'pass with empty discovery', pass: true, expected: 0 },
+  { name: 'exempt source only', sourceOnly: true, expected: 1 },
+  {
+    name: 'pass with exempt source only',
+    sourceOnly: true,
+    pass: true,
+    expected: 0,
+  },
+  {
+    name: 'untested source only',
+    sourceOnly: true,
+    untested: true,
+    expected: 4,
+  },
+  {
+    name: 'pass with untested source only',
+    sourceOnly: true,
+    untested: true,
+    pass: true,
+    expected: 4,
+  },
+  { name: 'untested with empty discovery', untested: true, expected: 4 },
+  { name: 'runner four with empty discovery', discoveryCode: 4, expected: 2 },
+  { name: 'signal with empty discovery', signal: 'SIGINT', expected: 0 },
+  {
+    name: 'signal and runner four with empty discovery',
+    discoveryCode: 4,
+    signal: 'SIGINT',
+    expected: 2,
+  },
+] as readonly Readonly<{
+  name: string
+  sourceOnly?: boolean
+  pass?: boolean
+  untested?: boolean
+  discoveryCode?: number
+  signal?: string
+  expected: number
+}>[]) {
+  test(
+    [
+      `given ${name}`,
+      'when paired selection is empty',
+      'it should distinguish an untested source from an empty selection and keep the real wire exit',
+    ].join(', '),
+    async () => {
+      // given
+      const harness = setup(
+        sourceOnly
+          ? []
+          : [child('', { code: discoveryCode ?? 0, signal: signal ?? null })],
+        {
+          pathKind: (path) => (path === 'src/lonely.ts' ? 'file' : undefined),
+        },
+      )
+      const selected = {
+        ...args,
+        flags: pass ? ['--pass-with-no-tests'] : [],
+        filters: sourceOnly
+          ? ['src/lonely.ts']
+          : [...(untested ? ['src/lonely.ts'] : []), 'missing'],
+        exempt: untested ? [] : ['**/lonely.ts'],
+      }
+      // when
+      const actual = await runPaired(harness.deps)(selected)
+      // then
+      expect(actual).toBe(expected)
+      expect(harness.calls()).toHaveLength(sourceOnly ? 0 : 1)
+      expect(harness.events().at(-1)).toEqual({
+        v: 1,
+        type: 'runner-exit',
+        code: signal
+          ? (discoveryCode ?? 0)
+          : untested
+            ? 0
+            : (discoveryCode ?? (pass ? 0 : 1)),
+        signal: signal ?? null,
+      })
+      expect(harness.unregistered()).toBe(true)
+    },
+  )
+}
+
+for (const untested of [false, true]) {
+  test(
+    [
+      `given a two-test family with runner-only exit four and untested=${untested}`,
+      'when running source-only arguments',
+      'it should skip discovery and run the whole family with a truthful wire code',
+    ].join(', '),
+    async () => {
+      // given
+      const harness = setup([child('', { code: 4, signal: null })], {
+        pathKind: () => 'file',
+        fileExists: (path) => path === 'src/calc.ts',
+        listDir: () => ['calc.test.ts', 'calc.driver.test.ts'],
+      })
+      // when
+      const actual = await runPaired(harness.deps)({
+        ...args,
+        flags: [],
+        filters: ['src/calc.ts', ...(untested ? ['src/lonely.ts'] : [])],
+      })
+      // then
+      expect(actual).toBe(untested ? 4 : 2)
+      expect(harness.calls()).toEqual([
+        {
+          argv: [
+            '--coverage',
+            '--',
+            './src/calc.driver.test.ts',
+            './src/calc.test.ts',
+          ],
+          options: undefined,
+        },
+      ])
+      expect(harness.events().at(-1)).toEqual({
+        v: 1,
+        type: 'runner-exit',
+        code: 4,
+        signal: null,
+      })
+      if (untested) expect(harness.events()[1].type).toBe('paired-unresolved')
+    },
+  )
+}
 
 const deferred = <T>() => {
   let resolve: (value: T) => void = () => undefined

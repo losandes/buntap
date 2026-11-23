@@ -1,4 +1,4 @@
-import type { TRunnerExitPayload, TRunnerStartPayload } from '../protocol/protocol-event.js';
+import type { TPairedUnresolvedPayload, TRunnerExitPayload, TRunnerStartPayload } from '../protocol/protocol-event.js';
 import type { TRunEvent, TTotals } from '../typedefs/run-events.js';
 import { type TExitState } from './resolve-exit-code.js';
 export type TRunnerExitInfo = Readonly<{
@@ -7,18 +7,22 @@ export type TRunnerExitInfo = Readonly<{
 }>;
 export type TProtocolExitState = Readonly<{
     exitState: TExitState;
+    untested: readonly string[];
+    unmatched: readonly string[];
+    paired: boolean;
     totals: TTotals | undefined;
     runnerExit: TRunnerExitInfo | undefined;
 }>;
 export declare const initialProtocolExitState: TProtocolExitState;
 /**
- * Pure fold over the decoded protocol stream: `runner-start` carries no
- * state, `runner-exit` records the child's own outcome (§1.2.4), and every
+ * Pure fold over the decoded protocol stream: `runner-start` records paired
+ * mode, `paired-unresolved` accumulates notices, `runner-exit` records the
+ * child's own outcome (§1.2.4), and every
  * other event folds through the same `nextExitState` the text-mode driver
  * uses (§1.3.3), additionally remembering the last `run-end`'s totals so the
  * verdict line can name a count (§1.3.5).
  */
-export declare const nextProtocolExitState: (state: TProtocolExitState, event: TRunEvent | TRunnerStartPayload | TRunnerExitPayload) => TProtocolExitState;
+export declare const nextProtocolExitState: (state: TProtocolExitState, event: TRunEvent | TRunnerStartPayload | TRunnerExitPayload | TPairedUnresolvedPayload) => TProtocolExitState;
 export type TProtocolVerdict = Readonly<{
     code: number;
     message: string;

@@ -8,6 +8,7 @@ import {
 } from './parse/bun-output.fixture.js'
 import { parseRun } from './parse/parse-run.js'
 import {
+  encodePairedUnresolved,
   encodeRunEvent,
   encodeRunnerExit,
   encodeRunnerStart,
@@ -39,6 +40,51 @@ const toProtocolInput = async (
     lines = [...lines, encodeRunEvent(event)]
   }
   return [...lines, encodeRunnerExit(exit.code, exit.signal)].join('')
+}
+
+for (const reporter of [
+  [],
+  ['--agent'],
+  ['--nyan'],
+  ['--block'],
+  ['--markdown'],
+]) {
+  for (const fails of [false, true]) {
+    test(
+      [
+        `given unresolved sources under reporter ${reporter} with failure=${fails}`,
+        'when running protocol input',
+        'it should print the exact notice only to stderr before its verdict',
+      ].join(', '),
+      async () => {
+        // given
+        const stream = await toProtocolInput(
+          fails ? mixedResultsFixture : coverageFixture,
+          { code: 0, signal: null },
+        )
+        const baseline = makeDeps(stream)
+        const harness = makeDeps(
+          encodeRunnerStart(['--paired']) +
+            encodePairedUnresolved(['src/a.ts', 'src/b.ts'], ['src/gone.ts']) +
+            stream,
+        )
+        // when
+        await main(baseline.deps)([...reporter, '--no-color'])
+        const actual = await main(harness.deps)([...reporter, '--no-color'])
+        // then
+        expect(actual).toBe(fails ? 1 : 4)
+        expect(harness.stdout()).toBe(baseline.stdout())
+        const notice =
+          '\nbuntap: 2 sources have no tests:\n  src/a.ts\n  src/b.ts\nbuntap: 1 argument matched no tests:\n  src/gone.ts\n'
+        expect(harness.stderr()).toBe(
+          notice +
+            (fails
+              ? baseline.stderr()
+              : '\nbuntap: 2 sources have no tests - exiting 4\n'),
+        )
+      },
+    )
+  }
 }
 
 const makeDeps = (

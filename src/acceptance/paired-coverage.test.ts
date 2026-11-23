@@ -197,11 +197,16 @@ for (const scenario of scenarios) {
         now: () => 0,
         defaultConcurrency: 2,
         fileExists: (file) => file === 'src/x.ts',
+        cwd: '/fake',
+        pathKind: () => undefined,
+        listDir: () => [],
+        readTextFile: () => undefined,
       })({
         mode: 'paired',
         argv: ['--paired'],
         flags: [],
         filters: [],
+        exempt: [],
         concurrency: undefined,
       })
       let stdout = ''

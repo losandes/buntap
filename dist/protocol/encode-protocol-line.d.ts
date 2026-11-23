@@ -3,5 +3,6 @@ import type { TRunEvent } from '../typedefs/run-events.js';
 export declare const encodeRunnerStart: (argv: readonly string[]) => string;
 /** §1.2.4: emitted once, after everything else. */
 export declare const encodeRunnerExit: (code: number | null, signal: string | null) => string;
+export declare const encodePairedUnresolved: (untested: readonly string[], unmatched: readonly string[]) => string;
 /** §1.2.5: an existing parser event, unchanged, with `v` added. */
 export declare const encodeRunEvent: (event: TRunEvent) => string;

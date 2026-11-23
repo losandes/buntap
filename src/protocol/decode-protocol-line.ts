@@ -59,6 +59,8 @@ const isWellFormed = (value: TUnknownRecord): boolean => {
   switch (value.type) {
     case 'runner-start':
       return isStringArray(value.argv)
+    case 'paired-unresolved':
+      return isStringArray(value.untested) && isStringArray(value.unmatched)
     case 'runner-exit':
       return isNullableNumber(value.code) && isNullableString(value.signal)
     case 'run-start':

@@ -3,10 +3,11 @@ import { parseCoverageTable } from '../parse/parse-coverage-table.js';
 import { parseDiscoveredFiles } from '../parse/parse-discovered-files.js';
 import { parseRun } from '../parse/parse-run.js';
 import { readLines } from '../parse/read-lines.js';
-import { encodeRunEvent, encodeRunnerExit, encodeRunnerStart, } from '../protocol/encode-protocol-line.js';
+import { encodePairedUnresolved, encodeRunEvent, encodeRunnerExit, encodeRunnerStart, } from '../protocol/encode-protocol-line.js';
 import { mapWithConcurrency } from './map-with-concurrency.js';
 import { mergeAsyncIterables } from './merge-async-iterables.js';
-import { toPairedSourcePath } from './to-paired-source-path.js';
+import { planPairedUnits } from './plan-paired-units.js';
+import { findUnmatchedFilters, resolvePairedArguments, } from './resolve-paired-arguments.js';
 const zeroTotals = {
     pass: 0,
     fail: 0,
@@ -30,14 +31,21 @@ const sumTotals = (totals, next) => ({
     durationMs: undefined,
 });
 export const runPaired = (deps) => async (args) => {
+    const resolution = resolvePairedArguments(deps)(args);
     const started = deps.now();
     deps.write(encodeRunnerStart(args.argv));
     // Streaming process coordination is local to this invocation. A signal
     // must see the current live children, including discovery, not a snapshot.
     let live = [];
     let receivedSignal;
-    const discovery = deps.spawn([...args.flags, ...args.filters, '--test-name-pattern=(?!)'], { omitEnv: ['CLAUDECODE', 'AGENT', 'REPL_ID'] });
-    live = [discovery];
+    const discovery = args.filters.length > 0 && resolution.discoveryFilters.length === 0
+        ? undefined
+        : deps.spawn([
+            ...args.flags,
+            ...resolution.discoveryFilters,
+            '--test-name-pattern=(?!)',
+        ], { omitEnv: ['CLAUDECODE', 'AGENT', 'REPL_ID'] });
+    live = discovery === undefined ? [] : [discovery];
     const unregister = deps.onSignal((signal) => {
         receivedSignal = signal;
         live.forEach((child) => {
@@ -45,8 +53,10 @@ export const runPaired = (deps) => async (args) => {
         });
     });
     try {
-        const discoveryLines = await Array.fromAsync(readLines(mergeAsyncIterables([discovery.stdout, discovery.stderr])));
-        const discoveryResult = await discovery.exited;
+        const discoveryLines = discovery === undefined
+            ? []
+            : await Array.fromAsync(readLines(mergeAsyncIterables([discovery.stdout, discovery.stderr])));
+        const discoveryResult = discovery === undefined ? undefined : await discovery.exited;
         live = [];
         const discovered = parseDiscoveredFiles(discoveryLines);
         if (discovered.status === 'error') {
@@ -54,33 +64,52 @@ export const runPaired = (deps) => async (args) => {
             deps.write(encodeRunnerExit(2, null));
             return 2;
         }
-        if (discovered.data.length === 0) {
-            deps.writeError(`bunt: no test files matched\n${discoveryLines.join('\n')}\n`);
-            const code = discoveryResult.signal === null
-                ? discoveryResult.code || 1
-                : discoveryResult.code;
-            deps.write(encodeRunnerExit(code, discoveryResult.signal));
-            return code ?? 1;
+        const unmatched = findUnmatchedFilters(deps.cwd)(resolution.discoveryFilters, discovered.data);
+        if (resolution.untested.length > 0 || unmatched.length > 0)
+            deps.write(encodePairedUnresolved(resolution.untested, unmatched));
+        const units = planPairedUnits(deps)([
+            ...discovered.data,
+            ...resolution.familyTests,
+        ]);
+        if (units.length === 0) {
+            deps.writeError(`bunt: no test files matched\n${discovery === undefined ? '' : `${discoveryLines.join('\n')}\n`}`);
+            const signal = discoveryResult?.signal ?? null;
+            const code = signal !== null
+                ? (discoveryResult?.code ?? null)
+                : resolution.untested.length > 0
+                    ? 0
+                    : args.flags.includes('--pass-with-no-tests') &&
+                        (discoveryResult === undefined || discoveryResult.code === 0)
+                        ? 0
+                        : discoveryResult?.code || 1;
+            deps.write(encodeRunnerExit(code, signal));
+            if (signal !== null)
+                return code === 4 && resolution.untested.length === 0
+                    ? 2
+                    : (code ?? 1);
+            if (resolution.untested.length > 0)
+                return 4;
+            return code === 4 ? 2 : (code ?? 1);
         }
-        const runFile = async (file) => {
+        const runFile = async (unit) => {
             if (receivedSignal !== undefined)
                 return undefined;
             const child = deps.spawn([
                 ...args.flags,
                 '--coverage',
                 '--',
-                `./${file}`,
+                ...unit.tests.map((file) => `./${file}`),
             ]);
             live = [...live, child];
             const events = await Array.fromAsync(parseRun(readLines(mergeAsyncIterables([child.stdout, child.stderr]))));
             const result = await child.exited;
             live = live.filter((handle) => handle !== child);
             const summarySeen = events.some((event) => event.type === 'run-end' && event.summarySeen);
-            const source = toPairedSourcePath(file);
+            const source = unit.source;
             const coverage = events.flatMap((event) => event.type === 'passthrough' && event.kind === 'coverage'
                 ? event.lines
                 : []);
-            const row = source !== undefined && deps.fileExists(source) && summarySeen
+            const row = source !== undefined && summarySeen
                 ? (parseCoverageTable(coverage).find((candidate) => candidate.file === source) ?? {
                     file: source,
                     functionsPct: 0,
@@ -90,7 +119,7 @@ export const runPaired = (deps) => async (args) => {
                 : undefined;
             return { events, result, row, summarySeen };
         };
-        const pending = mapWithConcurrency(args.concurrency ?? deps.defaultConcurrency)(discovered.data, runFile).map((promise) => Promise.allSettled([promise]));
+        const pending = mapWithConcurrency(args.concurrency ?? deps.defaultConcurrency)(units, runFile).map((promise) => Promise.allSettled([promise]));
         // Settle each file immediately, but await in discovery order so a defect
         // cannot drop later work or cause an unhandled rejection while we wait.
         let completed = [];
@@ -152,10 +181,14 @@ export const runPaired = (deps) => async (args) => {
         return code === null
             ? 1
             : code !== 0
-                ? code
+                ? code === 4 && resolution.untested.length === 0
+                    ? 2
+                    : code
                 : totals.fail + totals.errors > 0
                     ? 1
-                    : 0;
+                    : resolution.untested.length > 0
+                        ? 4
+                        : 0;
     }
     finally {
         unregister();

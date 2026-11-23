@@ -1,10 +1,52 @@
 import { expect, test } from 'bun:test'
 import { decodeProtocolLine } from './decode-protocol-line.js'
 import {
+  encodePairedUnresolved,
   encodeRunEvent,
   encodeRunnerExit,
   encodeRunnerStart,
 } from './encode-protocol-line.js'
+
+for (const { untested, unmatched, valid } of [
+  { untested: ['a.ts'], unmatched: ['gone'], valid: true },
+  { untested: [], unmatched: [], valid: true },
+  { untested: undefined, unmatched: [], valid: false },
+  { untested: [], unmatched: undefined, valid: false },
+  { untested: [1], unmatched: [], valid: false },
+  { untested: [], unmatched: 'gone', valid: false },
+]) {
+  test(
+    [
+      `given unresolved payload ${JSON.stringify([untested, unmatched])}`,
+      'when decoding the event',
+      'it should accept only two string arrays',
+    ].join(', '),
+    () => {
+      // given
+      const line = JSON.stringify({
+        v: 1,
+        type: 'paired-unresolved',
+        untested,
+        unmatched,
+      })
+      // when
+      const actual = decodeProtocolLine(line)
+      // then
+      expect(actual.status).toBe(valid ? 'ok' : 'error')
+      expect(
+        decodeProtocolLine(encodePairedUnresolved(['a.ts'], ['gone'])),
+      ).toEqual({
+        status: 'ok',
+        data: {
+          v: 1,
+          type: 'paired-unresolved',
+          untested: ['a.ts'],
+          unmatched: ['gone'],
+        },
+      })
+    },
+  )
+}
 
 test(
   [

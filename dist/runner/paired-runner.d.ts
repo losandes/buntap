@@ -5,6 +5,10 @@ export type TPairedRunnerDeps = TBuntRunnerDeps & Readonly<{
     spawn: (argv: readonly string[], options?: TSpawnOptions) => TChildHandle;
     writeError: (chunk: string) => void;
     fileExists: (path: string) => boolean;
+    cwd: string;
+    pathKind: (path: string) => 'file' | 'directory' | undefined;
+    listDir: (dir: string) => readonly string[];
+    readTextFile: (path: string) => string | undefined;
     now: () => number;
     defaultConcurrency: number;
 }>;
