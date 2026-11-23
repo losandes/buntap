@@ -1,10 +1,28 @@
 import { expect, test } from 'bun:test'
 import type { TRunEvent } from '../typedefs/run-events.js'
 import {
+  encodePairedUnresolved,
   encodeRunEvent,
   encodeRunnerExit,
   encodeRunnerStart,
 } from './encode-protocol-line.js'
+
+test(
+  [
+    'given unresolved argument lists',
+    'when encoding their protocol event',
+    'it should preserve the lists in a version-one newline-terminated line',
+  ].join(', '),
+  () => {
+    // given
+    // when
+    const actual = encodePairedUnresolved(['./x.ts'], ['gone'])
+    // then
+    expect(actual).toBe(
+      '{"v":1,"type":"paired-unresolved","untested":["./x.ts"],"unmatched":["gone"]}\n',
+    )
+  },
+)
 
 test(
   [

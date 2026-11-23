@@ -6,6 +6,107 @@ import {
   resolveProtocolVerdict,
 } from './resolve-protocol-exit-code.js'
 
+for (const { paired, runnerCode, untested, failure, gate, signal, code } of [
+  { paired: true, runnerCode: 4, untested: [], code: 2 },
+  { paired: true, runnerCode: 4, untested: ['x.ts'], code: 4 },
+  { paired: true, runnerCode: 0, untested: ['x.ts'], code: 4 },
+  { paired: false, runnerCode: 4, untested: [], code: 4 },
+  { paired: true, runnerCode: 5, untested: [], code: 5 },
+  { paired: true, runnerCode: 0, untested: [], code: 0 },
+  {
+    paired: true,
+    runnerCode: 4,
+    untested: ['x.ts', 'y.ts'],
+    gate: true,
+    code: 4,
+  },
+  { paired: true, runnerCode: 4, untested: ['x.ts'], failure: true, code: 1 },
+  {
+    paired: true,
+    runnerCode: 4,
+    untested: ['x.ts'],
+    signal: 'SIGINT',
+    code: 4,
+  },
+  { paired: true, runnerCode: 4, untested: [], gate: true, code: 3 },
+  { paired: true, runnerCode: 4, untested: [], signal: 'SIGINT', code: 130 },
+] as readonly Readonly<{
+  paired: boolean
+  runnerCode: number
+  untested: readonly string[]
+  failure?: boolean
+  gate?: boolean
+  signal?: string
+  code: number
+}>[]) {
+  test(
+    [
+      `given paired=${paired} runner=${runnerCode} untested=${untested} failure=${failure} gate=${gate} signal=${signal}`,
+      'when resolving protocol state',
+      `it should return reserved verdict ${code} with the original runner code in the message`,
+    ].join(', '),
+    () => {
+      // given
+      const started = nextProtocolExitState(initialProtocolExitState, {
+        type: 'runner-start',
+        argv: paired ? ['--paired'] : [],
+      })
+      const unresolved = nextProtocolExitState(started, {
+        type: 'paired-unresolved',
+        untested,
+        unmatched: ['gone'],
+      })
+      const state = {
+        ...unresolved,
+        runnerExit: { code: runnerCode, signal: signal ?? null },
+        exitState: {
+          sawFailure: failure ?? false,
+          coverageGateFailed: gate ?? false,
+          summarySeen: false,
+        },
+      }
+      // when
+      const actual = resolveProtocolVerdict(state)
+      // then
+      expect(started.paired).toBe(paired)
+      expect(actual.code).toBe(code)
+      if (code === 4 && untested.length > 0)
+        expect(actual.message).toBe(
+          `${untested.length} ${untested.length === 1 ? 'source has' : 'sources have'} no tests`,
+        )
+      if (code === 2 || (code === 4 && untested.length === 0) || code === 5)
+        expect(actual.message).toBe(
+          `bun exited ${runnerCode} before reporting any tests`,
+        )
+    },
+  )
+}
+
+test(
+  [
+    'given repeated unresolved events',
+    'when folding their lists',
+    'it should concatenate both lists in arrival order',
+  ].join(', '),
+  () => {
+    // given
+    const first = nextProtocolExitState(initialProtocolExitState, {
+      type: 'paired-unresolved',
+      untested: ['a.ts'],
+      unmatched: ['gone'],
+    })
+    // when
+    const actual = nextProtocolExitState(first, {
+      type: 'paired-unresolved',
+      untested: ['b.ts'],
+      unmatched: ['missing'],
+    })
+    // then
+    expect(actual.untested).toEqual(['a.ts', 'b.ts'])
+    expect(actual.unmatched).toEqual(['gone', 'missing'])
+  },
+)
+
 const runEndEvent = (
   overrides: Readonly<Partial<Record<'pass' | 'fail' | 'errors', number>>>,
 ): TProtocolEvent => ({

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // src/bunt.ts
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { availableParallelism } from "node:os";
 
 // src/parse/classify-line.ts
@@ -360,6 +360,8 @@ var encodeRunnerStart = (argv) => `${JSON.stringify({ v: PROTOCOL_VERSION, type:
 `;
 var encodeRunnerExit = (code, signal) => `${JSON.stringify({ v: PROTOCOL_VERSION, type: "runner-exit", code, signal })}
 `;
+var encodePairedUnresolved = (untested, unmatched) => `${JSON.stringify({ v: PROTOCOL_VERSION, type: "paired-unresolved", untested, unmatched })}
+`;
 var encodeRunEvent = (event) => `${JSON.stringify({ v: PROTOCOL_VERSION, ...event })}
 `;
 
@@ -501,8 +503,121 @@ var mapWithConcurrency = (limit) => (items, fn) => {
   });
 };
 
-// src/runner/to-paired-source-path.ts
-var toPairedSourcePath = (testPath) => /\.test\.[^./]+$/.test(testPath) ? testPath.replace(/\.test(\.[^./]+)$/, "$1") : undefined;
+// src/runner/paired-family.ts
+import { posix } from "node:path";
+var isTestFileName = (path) => /[._](?:test|spec)\.(?:ts|tsx|js|jsx|mts|cts|mjs|cjs)$/.test(path);
+var isSourceFileName = (path) => /\.(?:ts|tsx|js|jsx|mts|cts|mjs|cjs)$/.test(path) && !isTestFileName(path);
+var toOwnerSource = (fileExists) => (testPath) => {
+  const match = testPath.match(/^(.*)\.test\.(\w+)$/);
+  if (match === null)
+    return;
+  const exact = `${match[1]}.${match[2]}`;
+  if (fileExists(exact))
+    return exact;
+  const stem = posix.basename(match[1] ?? "");
+  const base = stem.match(/^(.+)\.[^.]+$/)?.[1];
+  if (base === undefined)
+    return;
+  const source = posix.join(posix.dirname(testPath), `${base}.${match[2]}`);
+  return !isTestFileName(source) && fileExists(source) ? source : undefined;
+};
+var listFamily = (deps) => (source) => {
+  const dir = posix.dirname(source);
+  const ext = posix.extname(source);
+  const name = posix.basename(source, ext);
+  return deps.listDir(dir).filter((entry) => {
+    const tail = entry.slice(name.length);
+    return entry.startsWith(name) && (tail === `.test${ext}` || /^\.[^.]+\.test\.[^.]+$/.test(tail)) && entry.endsWith(ext);
+  }).map((entry) => posix.join(dir, entry)).filter((test) => toOwnerSource(deps.fileExists)(test) === source).toSorted();
+};
+
+// src/runner/plan-paired-units.ts
+var planPairedUnits = (deps) => (selected) => [...new Set(selected)].reduce((units, test) => {
+  const source = toOwnerSource(deps.fileExists)(test);
+  if (source === undefined)
+    return [...units, { source, tests: [test] }];
+  const existing = units.find((unit) => unit.source === source);
+  const tests = [
+    ...new Set([
+      ...existing?.tests ?? [],
+      ...listFamily(deps)(source),
+      test
+    ])
+  ].toSorted();
+  return existing === undefined ? [...units, { source, tests }] : units.map((unit) => unit === existing ? { source, tests } : unit);
+}, []);
+
+// src/runner/resolve-paired-arguments.ts
+import { isAbsolute, relative, resolve } from "node:path";
+
+// src/lib/glob-to-regexp.ts
+var translate = (glob) => {
+  if (glob.length === 0)
+    return "";
+  if (glob.startsWith("**/"))
+    return `(?:.*/)?${translate(glob.slice(3))}`;
+  if (glob.startsWith("**"))
+    return `.*${translate(glob.slice(2))}`;
+  if (glob.startsWith("*"))
+    return `[^/]*${translate(glob.slice(1))}`;
+  if (glob.startsWith("?"))
+    return `[^/]${translate(glob.slice(1))}`;
+  const close = glob.indexOf("}");
+  if (glob.startsWith("{") && close > 0) {
+    const alternatives = glob.slice(1, close).split(",").map(translate);
+    return `(?:${alternatives.join("|")})${translate(glob.slice(close + 1))}`;
+  }
+  return `${glob[0]?.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}${translate(glob.slice(1))}`;
+};
+var globToRegExp = (glob) => new RegExp(`^${translate(glob.replace(/^\.\//, ""))}$`);
+
+// src/parse/parse-bunfig-coverage-ignore.ts
+var withoutComment = (line) => line.match(/^(?:"(?:\\.|[^"\\])*"|'[^']*'|[^#"'])*/)?.[0] ?? "";
+var parseBunfigCoverageIgnore = (toml) => {
+  const lines = toml.split(/\r?\n/).map(withoutComment);
+  const found = lines.reduce((state, line, index) => {
+    if (state.value !== undefined)
+      return state;
+    const section = line.trim().match(/^\[([^\]]+)\]$/)?.[1];
+    if (section !== undefined)
+      return { ...state, section };
+    const value = line.match(/^\s*coveragePathIgnorePatterns\s*=\s*(.*)$/)?.[1];
+    return state.section === "test" && value !== undefined ? { ...state, value, index } : state;
+  }, { section: "", value: undefined, index: 0 });
+  if (found.value === undefined)
+    return [];
+  const value = found.value.startsWith("[") && !found.value.includes("]") ? [found.value, ...lines.slice(found.index + 1)].join(`
+`).split("]")[0] ?? "" : found.value;
+  return Array.from(value.matchAll(/"((?:\\.|[^"\\])*)"|'([^']*)'/g), (match) => match[1] ?? match[2] ?? "");
+};
+
+// src/runner/resolve-paired-arguments.ts
+var toCwdRelative = (cwd) => (arg) => relative(cwd, resolve(cwd, arg)).replace(/\\/g, "/");
+var resolvePairedArguments = (deps) => (args) => {
+  const patterns = [
+    ...args.exempt,
+    ...parseBunfigCoverageIgnore(deps.readTextFile(`${deps.cwd}/bunfig.toml`) ?? "")
+  ].map(globToRegExp);
+  return args.filters.reduce((state, arg) => {
+    const source = toCwdRelative(deps.cwd)(arg);
+    if (deps.pathKind(source) !== "file" || !isSourceFileName(source))
+      return {
+        ...state,
+        discoveryFilters: [...state.discoveryFilters, arg]
+      };
+    const family = listFamily(deps)(source);
+    if (family.length > 0)
+      return {
+        ...state,
+        familyTests: [...new Set([...state.familyTests, ...family])]
+      };
+    return patterns.some((pattern) => pattern.test(source)) ? state : { ...state, untested: [...state.untested, arg] };
+  }, { discoveryFilters: [], familyTests: [], untested: [] });
+};
+var findUnmatchedFilters = (cwd) => (filters, discovered) => filters.filter((arg) => {
+  const normal = isAbsolute(arg) || arg.startsWith("./") || arg.startsWith("../") ? toCwdRelative(cwd)(arg).replace(/\/$/, "") : arg;
+  return !discovered.some((test) => test.includes(normal));
+});
 
 // src/runner/paired-runner.ts
 var zeroTotals2 = {
@@ -528,12 +643,17 @@ var sumTotals = (totals, next) => ({
   durationMs: undefined
 });
 var runPaired = (deps) => async (args) => {
+  const resolution = resolvePairedArguments(deps)(args);
   const started = deps.now();
   deps.write(encodeRunnerStart(args.argv));
   let live = [];
   let receivedSignal;
-  const discovery = deps.spawn([...args.flags, ...args.filters, "--test-name-pattern=(?!)"], { omitEnv: ["CLAUDECODE", "AGENT", "REPL_ID"] });
-  live = [discovery];
+  const discovery = args.filters.length > 0 && resolution.discoveryFilters.length === 0 ? undefined : deps.spawn([
+    ...args.flags,
+    ...resolution.discoveryFilters,
+    "--test-name-pattern=(?!)"
+  ], { omitEnv: ["CLAUDECODE", "AGENT", "REPL_ID"] });
+  live = discovery === undefined ? [] : [discovery];
   const unregister = deps.onSignal((signal) => {
     receivedSignal = signal;
     live.forEach((child) => {
@@ -541,8 +661,8 @@ var runPaired = (deps) => async (args) => {
     });
   });
   try {
-    const discoveryLines = await Array.fromAsync(readLines(mergeAsyncIterables([discovery.stdout, discovery.stderr])));
-    const discoveryResult = await discovery.exited;
+    const discoveryLines = discovery === undefined ? [] : await Array.fromAsync(readLines(mergeAsyncIterables([discovery.stdout, discovery.stderr])));
+    const discoveryResult = discovery === undefined ? undefined : await discovery.exited;
     live = [];
     const discovered = parseDiscoveredFiles(discoveryLines);
     if (discovered.status === "error") {
@@ -551,32 +671,44 @@ var runPaired = (deps) => async (args) => {
       deps.write(encodeRunnerExit(2, null));
       return 2;
     }
-    if (discovered.data.length === 0) {
+    const unmatched = findUnmatchedFilters(deps.cwd)(resolution.discoveryFilters, discovered.data);
+    if (resolution.untested.length > 0 || unmatched.length > 0)
+      deps.write(encodePairedUnresolved(resolution.untested, unmatched));
+    const units = planPairedUnits(deps)([
+      ...discovered.data,
+      ...resolution.familyTests
+    ]);
+    if (units.length === 0) {
       deps.writeError(`bunt: no test files matched
-${discoveryLines.join(`
+${discovery === undefined ? "" : `${discoveryLines.join(`
 `)}
-`);
-      const code = discoveryResult.signal === null ? discoveryResult.code || 1 : discoveryResult.code;
-      deps.write(encodeRunnerExit(code, discoveryResult.signal));
-      return code ?? 1;
+`}`);
+      const signal = discoveryResult?.signal ?? null;
+      const code = signal !== null ? discoveryResult?.code ?? null : resolution.untested.length > 0 ? 0 : args.flags.includes("--pass-with-no-tests") && (discoveryResult === undefined || discoveryResult.code === 0) ? 0 : discoveryResult?.code || 1;
+      deps.write(encodeRunnerExit(code, signal));
+      if (signal !== null)
+        return code === 4 && resolution.untested.length === 0 ? 2 : code ?? 1;
+      if (resolution.untested.length > 0)
+        return 4;
+      return code === 4 ? 2 : code ?? 1;
     }
-    const runFile = async (file) => {
+    const runFile = async (unit) => {
       if (receivedSignal !== undefined)
         return;
       const child = deps.spawn([
         ...args.flags,
         "--coverage",
         "--",
-        `./${file}`
+        ...unit.tests.map((file) => `./${file}`)
       ]);
       live = [...live, child];
       const events = await Array.fromAsync(parseRun(readLines(mergeAsyncIterables([child.stdout, child.stderr]))));
       const result = await child.exited;
       live = live.filter((handle) => handle !== child);
       const summarySeen = events.some((event) => event.type === "run-end" && event.summarySeen);
-      const source = toPairedSourcePath(file);
+      const source = unit.source;
       const coverage = events.flatMap((event) => event.type === "passthrough" && event.kind === "coverage" ? event.lines : []);
-      const row = source !== undefined && deps.fileExists(source) && summarySeen ? parseCoverageTable(coverage).find((candidate) => candidate.file === source) ?? {
+      const row = source !== undefined && summarySeen ? parseCoverageTable(coverage).find((candidate) => candidate.file === source) ?? {
         file: source,
         functionsPct: 0,
         linesPct: 0,
@@ -584,7 +716,7 @@ ${discoveryLines.join(`
       } : undefined;
       return { events, result, row, summarySeen };
     };
-    const pending = mapWithConcurrency(args.concurrency ?? deps.defaultConcurrency)(discovered.data, runFile).map((promise) => Promise.allSettled([promise]));
+    const pending = mapWithConcurrency(args.concurrency ?? deps.defaultConcurrency)(units, runFile).map((promise) => Promise.allSettled([promise]));
     let completed = [];
     let bannerSeen = false;
     for (const promise of pending) {
@@ -630,7 +762,7 @@ ${discoveryLines.join(`
     const signal = receivedSignal ?? signalled?.result.signal ?? null;
     const code = signal !== null ? null : incomplete === undefined ? 0 : incomplete.result.code || 1;
     deps.write(encodeRunnerExit(code, signal));
-    return code === null ? 1 : code !== 0 ? code : totals.fail + totals.errors > 0 ? 1 : 0;
+    return code === null ? 1 : code !== 0 ? code === 4 && resolution.untested.length === 0 ? 2 : code : totals.fail + totals.errors > 0 ? 1 : resolution.untested.length > 0 ? 4 : 0;
   } finally {
     unregister();
   }
@@ -643,6 +775,8 @@ var usageError = (arg) => {
     if (!/^[1-9][0-9]*$/.test(value))
       return `--paired-concurrency must be a positive integer, got "${value}"`;
   }
+  if (arg === "--paired-exempt" || arg === "--paired-exempt=")
+    return "--paired-exempt requires a glob, e.g. --paired-exempt=**/types.ts";
   if (arg === "--")
     return "--paired does not support a bare --";
   if (arg === "-t" || arg.startsWith("--test-name-pattern"))
@@ -655,7 +789,7 @@ var parseBuntArgs = (argv) => {
   const error = argv.map(usageError).find((message) => message !== undefined);
   if (error !== undefined)
     return { status: "error", error };
-  const remaining = argv.filter((arg) => arg !== "--paired" && !arg.startsWith("--paired-concurrency="));
+  const remaining = argv.filter((arg) => arg !== "--paired" && !arg.startsWith("--paired-concurrency=") && !arg.startsWith("--paired-exempt="));
   const concurrencyArg = argv.findLast((arg) => arg.startsWith("--paired-concurrency="));
   return {
     status: "ok",
@@ -663,6 +797,7 @@ var parseBuntArgs = (argv) => {
       mode: "paired",
       argv,
       concurrency: concurrencyArg === undefined ? undefined : Number(concurrencyArg.slice("--paired-concurrency=".length)),
+      exempt: argv.filter((arg) => arg.startsWith("--paired-exempt=")).map((arg) => arg.slice("--paired-exempt=".length)),
       filters: remaining.filter((arg) => !arg.startsWith("-")),
       flags: remaining.filter((arg) => arg.startsWith("-") && arg !== "--coverage" && !arg.startsWith("--coverage-reporter") && !arg.startsWith("--coverage-dir"))
     }
@@ -721,6 +856,29 @@ process.exitCode = await buntMain({
   write: (chunk) => void process.stdout.write(chunk),
   writeError: (chunk) => void process.stderr.write(chunk),
   fileExists: existsSync,
+  cwd: process.cwd(),
+  pathKind: (path) => {
+    try {
+      const stat = statSync(path);
+      return stat.isFile() ? "file" : stat.isDirectory() ? "directory" : undefined;
+    } catch {
+      return;
+    }
+  },
+  listDir: (dir) => {
+    try {
+      return readdirSync(dir);
+    } catch {
+      return [];
+    }
+  },
+  readTextFile: (path) => {
+    try {
+      return readFileSync(path, "utf8");
+    } catch {
+      return;
+    }
+  },
   now: Date.now,
   defaultConcurrency: availableParallelism(),
   onSignal

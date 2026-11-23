@@ -1,3 +1,4 @@
+import { formatPairedUnresolved } from './lib/format-paired-unresolved.js'
 import { parseBunfigThreshold } from './parse/parse-bunfig-threshold.js'
 import { parseRun } from './parse/parse-run.js'
 import { peekFirstNonEmptyLine } from './parse/peek-first-line.js'
@@ -149,8 +150,11 @@ export const main =
         if (decoded.status === 'error') continue // §1.3.4: ignore, never throw
 
         const event = decoded.data
-        if (event.type === 'runner-start') continue
-        if (event.type === 'runner-exit') {
+        if (
+          event.type === 'runner-start' ||
+          event.type === 'runner-exit' ||
+          event.type === 'paired-unresolved'
+        ) {
           protocolState = nextProtocolExitState(protocolState, event)
           continue
         }
@@ -164,6 +168,9 @@ export const main =
       }
       deps.write(reporter.end())
 
+      deps.writeError(
+        formatPairedUnresolved(protocolState.untested, protocolState.unmatched),
+      )
       const verdict = resolveProtocolVerdict(protocolState)
       deps.writeError(renderVerdictLine(verdict)) // §1.3.5-1.3.6: stderr only
       return verdict.code

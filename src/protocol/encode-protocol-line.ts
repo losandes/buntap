@@ -12,6 +12,12 @@ export const encodeRunnerExit = (
 ): string =>
   `${JSON.stringify({ v: PROTOCOL_VERSION, type: 'runner-exit', code, signal })}\n`
 
+export const encodePairedUnresolved = (
+  untested: readonly string[],
+  unmatched: readonly string[],
+): string =>
+  `${JSON.stringify({ v: PROTOCOL_VERSION, type: 'paired-unresolved', untested, unmatched })}\n`
+
 /** §1.2.5: an existing parser event, unchanged, with `v` added. */
 export const encodeRunEvent = (event: TRunEvent): string =>
   `${JSON.stringify({ v: PROTOCOL_VERSION, ...event })}\n`

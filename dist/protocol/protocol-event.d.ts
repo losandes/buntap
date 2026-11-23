@@ -10,6 +10,14 @@ export type TRunnerExitPayload = Readonly<{
     code: number | null;
     signal: string | null;
 }>;
+export type TPairedUnresolvedPayload = Readonly<{
+    type: 'paired-unresolved';
+    untested: readonly string[];
+    unmatched: readonly string[];
+}>;
+export type TPairedUnresolvedEvent = Readonly<TPairedUnresolvedPayload & {
+    v: 1;
+}>;
 export type TRunnerStartEvent = Readonly<TRunnerStartPayload & {
     v: 1;
 }>;
@@ -21,6 +29,6 @@ export type TRunnerExitEvent = Readonly<TRunnerExitPayload & {
  * added. §1.2.3-1.2.4: `runner-start` and `runner-exit` bracket the stream
  * and exist only on the wire — they are not part of `TRunEvent`.
  */
-export type TProtocolEvent = TRunnerStartEvent | TRunnerExitEvent | Readonly<TRunEvent & {
+export type TProtocolEvent = TRunnerStartEvent | TRunnerExitEvent | TPairedUnresolvedEvent | Readonly<TRunEvent & {
     v: 1;
 }>;

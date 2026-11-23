@@ -14,6 +14,16 @@ export type TRunnerExitPayload = Readonly<{
   signal: string | null
 }>
 
+export type TPairedUnresolvedPayload = Readonly<{
+  type: 'paired-unresolved'
+  untested: readonly string[]
+  unmatched: readonly string[]
+}>
+
+export type TPairedUnresolvedEvent = Readonly<
+  TPairedUnresolvedPayload & { v: 1 }
+>
+
 export type TRunnerStartEvent = Readonly<TRunnerStartPayload & { v: 1 }>
 
 export type TRunnerExitEvent = Readonly<TRunnerExitPayload & { v: 1 }>
@@ -26,4 +36,5 @@ export type TRunnerExitEvent = Readonly<TRunnerExitPayload & { v: 1 }>
 export type TProtocolEvent =
   | TRunnerStartEvent
   | TRunnerExitEvent
+  | TPairedUnresolvedEvent
   | Readonly<TRunEvent & { v: 1 }>

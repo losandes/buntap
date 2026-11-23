@@ -44,24 +44,32 @@ bun test 2>&1 | buntap --nyan
 
 Without `--paired`, every argument is appended to `bun test` verbatim and in order, and none of them are inspected. There is no `bunt --help` or `bunt --version`; `bun test` ignores both of those flags, so `bunt --version` simply runs your suite.
 
-`--paired` measures each source file using only its sibling test file, even when other tests exercise that source. Only pairs whose test files match the chosen filters contribute coverage; imported sources whose own tests are outside the run do not affect the gate. A pair is a sibling with `.test` removed before the final extension: `x.test.ts` measures `x.ts`, and `x.test.tsx` measures `x.tsx`. A test with no source sibling, or with another naming convention such as `.spec.`, contributes no coverage row. An existing source that its test never loads contributes a 0% row.
+`--paired` measures each source using its whole sibling test family: for `x.ts`, that is `x.test.ts` and `x.<variant>.test.ts`, where `<variant>` is one non-empty segment without a dot. Extensions must match (`x.tsx` pairs with `x.test.tsx`, not `x.test.ts`). Each test has one owner: the exact source wins, so `x.driver.test.ts` belongs to `x.driver.ts` if that exists, otherwise to `x.ts`. A test with no owner, or with another naming convention such as `.spec.`, runs but contributes no coverage row. Imported sources whose own tests are outside the run do not affect the gate. A tested source that its family never loads contributes a 0% row.
 
 ```bash
 bunt --paired src/lib | buntap --agent
 bunt --paired --paired-concurrency=1 --timeout=10000 src/lib | buntap --agent
 bunt --paired src/lib | buntap --agent --coverage-threshold=90
+bunt --paired src/calc.ts src/other.test.ts | buntap --agent
+bunt --paired src/types.ts '--paired-exempt=**/types.ts' --pass-with-no-tests | buntap --agent
 ```
 
-`bunt` discovers the matched test files, runs each in its own `bun test --coverage` process, and emits one coverage table containing only the paired rows. `buntap` applies the existing threshold and exit-code precedence: a gap with all tests passing exits `3`; failing tests take precedence and exit `1`. Without a minimum, coverage is rendered but no file is a gap. Whole-run coverage without `--paired` is unchanged.
+`bunt` resolves existing source-file arguments directly to their families; it never passes a source path to bun as a test. Naming one test file also selects its whole family. Each family runs in one `bun test --coverage` process, so coverage reflects all its tests together. Ownerless tests run individually. `bunt` emits one coverage table containing only the paired rows. A gap with all tests passing exits `3`; failing tests take precedence and exit `1`. Without a minimum, coverage is rendered but no file is a gap. Whole-run coverage without `--paired` is unchanged.
 
-`--paired-concurrency=<n>` limits concurrent test processes and defaults to the available CPU parallelism. Every occurrence must be a positive decimal integer (`1`, `2`, …); the last occurrence wins. In paired mode, arguments starting with `-` are bun flags, and all other arguments are discovery filters. Value-taking bun flags must therefore use `--flag=value`, not a separate value. `--coverage`, `--coverage-reporter…` and `--coverage-dir…` arguments are removed; per-file processes always receive `--coverage`.
+Every named source with no tests is listed on `buntap`'s stderr under every reporter, even when other tests fail. With no failing tests, any untested source makes the pipeline exit `4`, ahead of coverage gaps, signals and bun's own failures. `--pass-with-no-tests` never excuses an untested source. It yields `0` for an empty paired selection only when no source is untested and discovery succeeded (or was unnecessary); without it an empty selection is nonzero.
 
-A bare `--`, `-t`, any `--test-name-pattern…` argument, or an invalid `--paired-concurrency=<n>` is a usage error in paired mode: `bunt` writes a diagnostic to stderr, spawns nothing, and exits `2`. Paired measurement always runs whole test files.
+Declare an exemption with repeatable `--paired-exempt=<glob>` flags. Sources matching `[test].coveragePathIgnorePatterns` in `./bunfig.toml` are automatically exempt. Exemptions apply only to sources with no tests; tested sources still run. Globs match the whole cwd-relative path and support `**` (including directories), `*` (within a segment), `?` (one non-slash character), and non-nested `{a,b}` alternatives; `**/` also matches no directory, and one leading `./` is ignored. Other characters, including brackets, are literal.
+
+Directories and partial-path filters go to bun unchanged. A directory selects tests beneath it, not a check for untested sources beneath it. Any argument that matches no tests, including a deleted path or a non-code file, is listed as having matched no tests on stderr; that notice does not change the remaining arguments' exit status.
+
+`--paired-concurrency=<n>` limits concurrent test processes and defaults to the available CPU parallelism. Every occurrence must be a positive decimal integer (`1`, `2`, …); the last occurrence wins. In paired mode, arguments starting with `-` are bun flags (apart from the paired options), and other arguments are source paths or discovery filters. Value-taking bun flags must therefore use `--flag=value`, not a separate value. `--coverage`, `--coverage-reporter…` and `--coverage-dir…` arguments are removed; family processes always receive `--coverage`.
+
+A bare `--`, `-t`, any `--test-name-pattern…` argument, an invalid `--paired-concurrency=<n>`, or a bare or empty `--paired-exempt` is a usage error in paired mode: `bunt` writes a diagnostic to stderr, spawns nothing, and exits `2`. Paired measurement always runs whole test files.
 
 ### Paired-mode limits
 
 - Discovery evaluates each matched test file's top-level code once before the real runs; test hooks do not run during discovery.
-- Test files run in separate concurrent processes. Suites sharing a port or file across test files need `--paired-concurrency=1`.
+- Test files in one family share a process, including module state. Different families run in separate concurrent processes; suites sharing a port or file across families need `--paired-concurrency=1`.
 - `bunfig.toml` controls coverage output. Its settings can override coverage command-line flags. Keep `"text"` in `coverageReporter`: without it, bun emits no table and every pair is reported at 0%. A source excluded by `coveragePathIgnorePatterns` is likewise reported at 0%.
 - Concurrent processes overwrite a shared `lcov.info` when lcov output is configured; that file ends up containing one arbitrary test file's coverage, not the combined paired table.
 - Discovery recognises `*.test.*`, `*_test.*` and `*.spec.*` headers. Bun also matches `_test_` and `_spec_` filenames; a discovery count mismatch exits `2` rather than silently omitting them. Only `.test.` siblings are paired.
@@ -73,13 +81,17 @@ Resolved top to bottom; the first matching row wins.
 | Condition                                   | Exit                  | Verdict line example                                                     |
 | ------------------------------------------- | --------------------- | ------------------------------------------------------------------------ |
 | Parsed failures or errors greater than zero | `1`                   | `buntap: 2 tests failed - exiting 1`                                     |
+| No failures, at least one untested source   | `4`                   | `buntap: 1 source has no tests - exiting 4`                              |
 | No failures, coverage gate tripped          | `3`                   | `buntap: coverage below the configured minimum - exiting 3`              |
 | No failures, bun was killed by a signal     | `128 + signal number` | `buntap: bun was killed by SIGINT - exiting 130`                         |
+| No failures, paired run, bun exited `4`     | `2`                   | `buntap: bun exited 4 before reporting any tests - exiting 2`            |
 | No failures, bun exited nonzero             | that code             | `buntap: bun exited 1 before reporting any tests - exiting 1`            |
 | No `runner-exit` line arrived               | `2`                   | `buntap: the runner stopped without reporting its exit code - exiting 2` |
 | Otherwise                                   | `0`                   | `buntap: 247 tests passed - exiting 0`                                   |
 
-Do not add `set -o pipefail` to this pipeline. `bunt` deliberately exits with bun's own exit code so it behaves like `bun test` when run alone. With `pipefail` the shell reports that code instead of the resolved one above, which defeats the reason this protocol exists.
+Exit `4` is reserved for untested sources in paired mode: a bun exit of `4` with no untested source is reported as `2`, with the verdict line naming the original code. The `runner-exit` wire event retains bun's real code. Unpaired runs still pass `4` through unchanged.
+
+Do not add `set -o pipefail` to this pipeline. `bunt` preserves runner outcomes except for the paired untested-source result and the paired exit-`4` reservation; `buntap` resolves the full precedence. With `pipefail` the shell reports that code instead of the resolved one above, which defeats the reason this protocol exists.
 
 ## Coverage
 
@@ -240,14 +252,15 @@ BUNTAP_REPORTER=nyan bunt | buntap   # does not work: only bunt sees it
 
 ## Exit codes
 
-| Code | Meaning                                                               |
-| ---- | --------------------------------------------------------------------- |
-| `0`  | no failures, no errors, and coverage at or above the threshold        |
-| `1`  | bun reported a test failure, an error, or an unhandled error          |
-| `2`  | a usage error, or no bun test summary was found on stdin              |
-| `3`  | every test passed but at least one file is below the coverage minimum |
+| Code | Meaning                                                                                                       |
+| ---- | ------------------------------------------------------------------------------------------------------------- |
+| `0`  | no failures, no errors, no untested sources, and coverage at or above the threshold                           |
+| `1`  | bun reported a test failure, an error, or an unhandled error                                                  |
+| `2`  | a usage error, missing summary/runner exit, or paired runner-only exit `4`                                    |
+| `3`  | no failures or untested sources, but a file is below the coverage minimum                                     |
+| `4`  | paired mode only: at least one untested source and no failing test; outranks `3`, signals and runner failures |
 
-Those four are the whole range in text mode, where bun's own exit code never reaches `buntap`: bun is not the last command in the pipe, so the shell discards its status and `buntap` reconstructs pass/fail from the parsed summary. In protocol mode, `bunt` hands that code over and the precedence table above applies, which is the only way to get `128 + signal` or a passthrough of bun's own nonzero code.
+Codes `0`–`3` are the whole range in text mode, where bun's own exit code never reaches `buntap`: bun is not the last command in the pipe, so the shell discards its status and `buntap` reconstructs pass/fail from the parsed summary. In protocol mode, `bunt` hands that code over and the precedence table above applies, which is the only way to get `128 + signal` or a passthrough of bun's own nonzero code.
 
 ## Development
 

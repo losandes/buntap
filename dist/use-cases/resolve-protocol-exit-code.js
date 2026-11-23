@@ -2,19 +2,31 @@ import { signalToNumber } from '../lib/signal-to-number.js';
 import { initialExitState, nextExitState, } from './resolve-exit-code.js';
 export const initialProtocolExitState = {
     exitState: initialExitState,
+    untested: [],
+    unmatched: [],
+    paired: false,
     totals: undefined,
     runnerExit: undefined,
 };
 /**
- * Pure fold over the decoded protocol stream: `runner-start` carries no
- * state, `runner-exit` records the child's own outcome (§1.2.4), and every
+ * Pure fold over the decoded protocol stream: `runner-start` records paired
+ * mode, `paired-unresolved` accumulates notices, `runner-exit` records the
+ * child's own outcome (§1.2.4), and every
  * other event folds through the same `nextExitState` the text-mode driver
  * uses (§1.3.3), additionally remembering the last `run-end`'s totals so the
  * verdict line can name a count (§1.3.5).
  */
 export const nextProtocolExitState = (state, event) => {
     if (event.type === 'runner-start')
-        return state;
+        return event.argv.includes('--paired') === state.paired
+            ? state
+            : { ...state, paired: event.argv.includes('--paired') };
+    if (event.type === 'paired-unresolved')
+        return {
+            ...state,
+            untested: [...state.untested, ...event.untested],
+            unmatched: [...state.unmatched, ...event.unmatched],
+        };
     if (event.type === 'runner-exit') {
         return {
             ...state,
@@ -40,6 +52,13 @@ export const resolveProtocolVerdict = (state) => {
     if (state.exitState.sawFailure) {
         return { code: 1, message: `${pluralTests(fail)} failed` };
     }
+    if (state.untested.length > 0) {
+        const count = state.untested.length;
+        return {
+            code: 4,
+            message: `${count} ${count === 1 ? 'source has' : 'sources have'} no tests`,
+        };
+    }
     if (state.exitState.coverageGateFailed) {
         return { code: 3, message: 'coverage below the configured minimum' };
     }
@@ -55,7 +74,7 @@ export const resolveProtocolVerdict = (state) => {
         runnerExit.code !== null &&
         runnerExit.code !== 0) {
         return {
-            code: runnerExit.code,
+            code: state.paired && runnerExit.code === 4 ? 2 : runnerExit.code,
             message: `bun exited ${runnerExit.code} before reporting any tests`,
         };
     }

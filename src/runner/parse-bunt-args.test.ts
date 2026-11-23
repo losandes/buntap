@@ -25,6 +25,64 @@ for (const argv of [
   )
 }
 
+for (const argv of [['--paired-exempt'], ['--paired-exempt=']]) {
+  test(
+    [
+      `given invalid exemption ${argv}`,
+      'when parsing paired arguments',
+      'it should reject the missing glob but leave unpaired argv alone',
+    ].join(', '),
+    () => {
+      // given
+      // when
+      const actual = parseBuntArgs(['--paired', ...argv])
+      // then
+      expect(actual).toEqual({
+        status: 'error',
+        error:
+          '--paired-exempt requires a glob, e.g. --paired-exempt=**/types.ts',
+      })
+      expect(parseBuntArgs(argv)).toEqual({
+        status: 'ok',
+        data: { mode: 'passthrough', argv },
+      })
+    },
+  )
+}
+
+for (const exempt of [['**/types.ts'], ['**/types.ts', 'src/fixtures/*']]) {
+  test(
+    [
+      `given exemption globs ${exempt}`,
+      'when parsing paired arguments',
+      'it should collect globs in order without forwarding them to bun',
+    ].join(', '),
+    () => {
+      // given
+      const argv = [
+        '--paired',
+        'src',
+        '--timeout=5',
+        ...exempt.map((glob) => `--paired-exempt=${glob}`),
+      ]
+      // when
+      const actual = parseBuntArgs(argv)
+      // then
+      expect(actual).toEqual({
+        status: 'ok',
+        data: {
+          mode: 'paired',
+          argv,
+          flags: ['--timeout=5'],
+          filters: ['src'],
+          exempt,
+          concurrency: undefined,
+        },
+      })
+    },
+  )
+}
+
 for (const value of ['0', '-1', '1.5', 'abc', '', '1e2', '0x10', ' 2', '01']) {
   test(
     [
@@ -119,6 +177,7 @@ for (const { options, concurrency } of [
           argv,
           flags: ['--timeout=100'],
           filters: ['src/a', 'src/b'],
+          exempt: [],
           concurrency,
         },
       })
